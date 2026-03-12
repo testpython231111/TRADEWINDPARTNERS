@@ -1402,21 +1402,14 @@ async function oppdaterWatchlist() {
 
 window.addEventListener("load", () => { tegnWatchlist(); });
 
-// ── Enter-tast ────────────────────────────────────────────────────────────────
-document.getElementById("tickerInput").addEventListener("keydown", e => {
-  if (e.key === "Enter") kjørAnalyse(false);
-});
-document.getElementById("wlInput").addEventListener("keydown", e => {
-  if (e.key === "Enter") leggTilWatchlist();
-});
-document.getElementById("pfTicker").addEventListener("keydown", e => {
-  if (e.key === "Enter") document.getElementById("pfAntall").focus();
-});
-document.getElementById("pfAntall").addEventListener("keydown", e => {
-  if (e.key === "Enter") document.getElementById("pfPris").focus();
-});
-document.getElementById("pfPris").addEventListener("keydown", e => {
-  if (e.key === "Enter") leggTilPosisjon();
+// ── Event listeners ───────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  const safe = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("keydown", fn); };
+  safe("tickerInput", e => { if (e.key === "Enter") kjørAnalyse(false); });
+  safe("wlInput",     e => { if (e.key === "Enter") leggTilWatchlist(); });
+  safe("pfTicker",    e => { if (e.key === "Enter") document.getElementById("pfAntall")?.focus(); });
+  safe("pfAntall",    e => { if (e.key === "Enter") document.getElementById("pfPris")?.focus(); });
+  safe("pfPris",      e => { if (e.key === "Enter") leggTilPosisjon(); });
 });
 </script>
 </body>
