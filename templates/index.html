@@ -1321,52 +1321,25 @@ async function lastNyheter(ticker) {
 
 // ── Watchlist ─────────────────────────────────────────────────────────────────
 let watchlist = JSON.parse(localStorage.getItem("watchlist") || "[]");
+let wlPriser  = {};  // cache: ticker -> price data
 
 function leggTilWatchlist() {
-  const t = document.getElementById("wlInput").value.trim().toUpperCase();
-  if (!t) return;
-  if (watchlist.includes(t)) { alert(`${t} is already in the watchlist.`); return; }
+  const inp = document.getElementById("wlInput");
+  const t   = (inp.value || "").trim().toUpperCase();
+  if (!t) { alert("Enter a ticker first."); return; }
+  if (watchlist.includes(t)) { alert(t + " is already in your watchlist."); return; }
   watchlist.push(t);
   localStorage.setItem("watchlist", JSON.stringify(watchlist));
-  document.getElementById("wlInput").value = "";
-  // Show immediately as pending, then fetch prices
-  visWatchlistPending();
-  oppdaterWatchlist();
-}
-
-function visWatchlistPending() {
-  // Show all tickers immediately with "loading" state while prices fetch
-  const rader = watchlist.map(t => `
-    <div class="wl-row" style="cursor:default;opacity:0.7">
-      <span style="color:var(--green);font-weight:500">${t}</span>
-      <span style="color:var(--text2);font-size:10px">fetching...</span>
-      <span style="color:var(--text2)">—</span>
-      <span style="color:var(--text2)">—</span>
-      <span style="color:var(--text2)">—</span>
-      <span></span>
-      <span style="color:var(--text2)">—</span>
-      <button onclick="event.stopPropagation();fjernFraWatchlist('${t}')"
-        style="background:none;border:1px solid var(--border);color:var(--text2);
-               font-size:9px;padding:2px 6px;cursor:pointer;font-family:inherit">✕</button>
-    </div>`).join("");
-
-  document.getElementById("wlTabell").innerHTML = `
-    <div class="wl-header">
-      <span>TICKER</span><span>NAME</span><span>PRICE</span>
-      <span>DAY %</span><span>P/E</span><span>30d</span>
-      <span>CONSENSUS</span><span></span>
-    </div>
-    ${rader}
-    <div style="padding:8px 14px;font-size:9px;color:var(--green2)">
-      ↻ Fetching live prices...
-    </div>`;
+  inp.value = "";
+  tegnWatchlist();
+  hentPriser();
 }
 
 function fjernFraWatchlist(ticker) {
-  watchlist = watchlist.filter(t => t !== ticker);
+  watchlist = watchlist.filter(x => x !== ticker);
+  delete wlPriser[ticker];
   localStorage.setItem("watchlist", JSON.stringify(watchlist));
-  visWatchlistTabell([]);
-  oppdaterWatchlist();
+  tegnWatchlist();
 }
 
 function analyserFraWatchlist(ticker) {
@@ -1375,114 +1348,59 @@ function analyserFraWatchlist(ticker) {
   kjørAnalyse(false);
 }
 
-function visWatchlistTabell(data) {
+function tegnWatchlist() {
+  const el = document.getElementById("wlTabell");
+  if (!el) return;
   if (!watchlist.length) {
-    document.getElementById("wlTabell").innerHTML =
-      `<div style="padding:20px;text-align:center;color:var(--text2);font-size:11px">No stocks in watchlist yet.</div>`;
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);font-size:11px">No stocks yet — type a ticker above and press + ADD</div>';
     return;
   }
-  if (!data.length) {
-    document.getElementById("wlTabell").innerHTML =
-      `<div style="padding:16px;color:var(--green2);font-size:11px;text-align:center">Fetching prices...</div>`;
-    return;
-  }
-
-  const rader = data.map(r => {
-    if (r.feil) return `
-      <div class="wl-row" style="cursor:default">
-        <span style="color:var(--red)">${r.ticker}</span>
-        <span style="color:var(--red);font-size:10px">${r.feil}</span>
-        <span></span><span></span><span></span><span></span><span></span>
-        <button onclick="fjernFraWatchlist('${r.ticker}')"
-          style="background:none;border:1px solid var(--red);color:var(--red);
-                 font-size:9px;padding:2px 6px;cursor:pointer;font-family:inherit">✕</button>
-      </div>`;
-
-    const cls = r.endring >= 0 ? "pos" : "neg";
-    const pil = r.endring >= 0 ? "▲" : "▼";
-
-    // Mini sparkline (SVG)
+  const header = '<div class="wl-header"><span>TICKER</span><span>NAME</span><span>PRICE</span><span>DAY %</span><span>P/E</span><span>30d</span><span>CONSENSUS</span><span></span></div>';
+  const rows = watchlist.map(t => {
+    const d = wlPriser[t];
+    const removeBtn = `<button onclick="event.stopPropagation();fjernFraWatchlist('${t}')" style="background:none;border:1px solid var(--border);color:var(--text2);font-size:9px;padding:2px 6px;cursor:pointer;font-family:inherit">✕</button>`;
+    if (!d) return `<div class="wl-row" onclick="analyserFraWatchlist('${t}')"><span style="color:var(--green);font-weight:500">${t}</span><span style="color:var(--text2);font-size:10px">loading…</span><span>—</span><span>—</span><span>—</span><span></span><span>—</span>${removeBtn}</div>`;
+    if (d.feil) return `<div class="wl-row" style="cursor:default"><span style="color:var(--red)">${t}</span><span style="color:var(--red);font-size:10px">${d.feil}</span><span></span><span></span><span></span><span></span><span></span>${removeBtn}</div>`;
+    const cls = d.endring >= 0 ? "pos" : "neg";
+    const pil = d.endring >= 0 ? "▲" : "▼";
     let svg = "";
-    if (r.sparkline && r.sparkline.length > 1) {
-      const min = Math.min(...r.sparkline);
-      const max = Math.max(...r.sparkline);
-      const range = max - min || 1;
-      const pts = r.sparkline.map((p, i) => {
-        const x = (i / (r.sparkline.length-1)) * 80;
-        const y = 28 - ((p - min) / range) * 24;
-        return `${x},${y}`;
-      }).join(" ");
-      const farger = r.endring >= 0 ? "#00ff88" : "#ff3366";
-      svg = `<svg class="sparkline" viewBox="0 0 80 28">
-        <polyline points="${pts}" fill="none" stroke="${farger}" stroke-width="1.5"/>
-      </svg>`;
+    if (d.sparkline && d.sparkline.length > 1) {
+      const lo = Math.min(...d.sparkline), hi = Math.max(...d.sparkline), rng = hi-lo||1;
+      const pts = d.sparkline.map((p,i) => `${i/(d.sparkline.length-1)*80},${28-((p-lo)/rng)*24}`).join(" ");
+      svg = `<svg viewBox="0 0 80 28" width="80" height="28"><polyline points="${pts}" fill="none" stroke="${d.endring>=0?'#00ff88':'#ff3366'}" stroke-width="1.5"/></svg>`;
     }
-
-    // Konsensus
-    const kHtml = konsensusHtml(r.konsensus);
-
-    return `
-      <div class="wl-row" onclick="analyserFraWatchlist('${r.ticker}')">
-        <span style="color:var(--green);font-weight:500">${r.ticker}</span>
-        <span style="color:var(--text2);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(r.navn||'').substring(0,22)}</span>
-        <span style="color:var(--text3);font-weight:500">${r.pris}</span>
-        <span class="${cls}">${pil}${Math.abs(r.endring).toFixed(2)}%</span>
-        <span style="color:var(--text2);font-size:10px">${r.pe}</span>
-        <span>${svg}</span>
-        <span>${kHtml}</span>
-        <button onclick="event.stopPropagation();fjernFraWatchlist('${r.ticker}')"
-          style="background:none;border:1px solid var(--border);color:var(--text2);
-                 font-size:9px;padding:2px 6px;cursor:pointer;font-family:inherit">✕</button>
-      </div>`;
-  }).join("");
-
-  document.getElementById("wlTabell").innerHTML = `
-    <div class="wl-header">
-      <span>TICKER</span><span>NAME</span><span>PRICE</span>
-      <span>DAY %</span><span>P/E</span><span>30d</span>
-      <span>CONSENSUS</span><span></span>
-    </div>
-    ${rader}
-    <div style="padding:8px 14px;font-size:9px;color:var(--text2)">
-      Click a row to analyze the stock
+    return `<div class="wl-row" onclick="analyserFraWatchlist('${t}')">
+      <span style="color:var(--green);font-weight:500">${t}</span>
+      <span style="color:var(--text2);font-size:10px">${(d.navn||'').substring(0,20)}</span>
+      <span style="color:var(--text3)">${d.pris}</span>
+      <span class="${cls}">${pil}${Math.abs(d.endring).toFixed(2)}%</span>
+      <span style="color:var(--text2);font-size:10px">${d.pe}</span>
+      <span>${svg}</span>
+      <span>${konsensusHtml(d.konsensus)}</span>
+      ${removeBtn}
     </div>`;
+  }).join("");
+  el.innerHTML = header + rows + '<div style="padding:6px 14px;font-size:9px;color:var(--text2)">Click a row to analyze</div>';
+}
+
+async function hentPriser() {
+  if (!watchlist.length) return;
+  try {
+    const res  = await fetch("/api/watchlist_kurs", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({tickers:watchlist})});
+    const data = await res.json();
+    data.forEach(d => { wlPriser[d.ticker] = d; });
+    tegnWatchlist();
+  } catch(e) {
+    console.warn("Price fetch failed:", e.message);
+  }
 }
 
 async function oppdaterWatchlist() {
-  if (!watchlist.length) { visWatchlistTabell([]); return; }
-  document.getElementById("wlTabell").innerHTML =
-    `<div style="padding:20px;text-align:center;color:var(--green2);font-size:11px">
-      Fetching prices for ${watchlist.join(", ")}...<br>
-      <span style="color:var(--text2);font-size:10px;margin-top:6px;display:block">
-        (May take 30–60 sec if server is waking up)
-      </span>
-    </div>`;
-  try {
-    const res  = await fetch("/api/watchlist_kurs", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({tickers: watchlist})
-    });
-    const data = await res.json();
-    if (!data.length) {
-      document.getElementById("wlTabell").innerHTML =
-        `<div class="alert alert-error">No data returned. Check that the ticker symbols are valid (e.g. AAPL, EQNR.OL)</div>`;
-      return;
-    }
-    visWatchlistTabell(data);
-  } catch(e) {
-    document.getElementById("wlTabell").innerHTML =
-      `<div class="alert alert-error">
-        Could not fetch prices: ${e.message}<br>
-        <span style="font-size:10px;margin-top:4px;display:block">Try clicking ↻ REFRESH to try again.</span>
-      </div>`;
-  }
+  tegnWatchlist();
+  await hentPriser();
 }
 
-// Show watchlist on load
-window.addEventListener("load", () => {
-  if (watchlist.length) visWatchlistPending();
-});
+window.addEventListener("load", () => { tegnWatchlist(); });
 
 // ── Enter-tast ────────────────────────────────────────────────────────────────
 document.getElementById("tickerInput").addEventListener("keydown", e => {
