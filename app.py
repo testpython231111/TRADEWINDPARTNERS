@@ -347,13 +347,17 @@ def api_makro():
 
 @app.route("/api/sammenlign", methods=["POST"])
 def api_sammenlign():
-    data    = request.json
-    tickers = data.get("tickers", [])
-    periode = data.get("periode", "1y")
+    data     = request.json
+    tickers  = data.get("tickers", [])
+    periode  = data.get("periode", "1y")
+    groq_key = data.get("groq_key", "")
     resultat = []
+
     for t in tickers:
         try:
-            df = yf.download(t, period=periode, progress=False, auto_adjust=True)
+            aksje = yf.Ticker(t)
+            info  = aksje.info
+            df    = yf.download(t, period=periode, progress=False, auto_adjust=True)
             if df.empty: continue
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             ret    = df["Close"].pct_change().dropna()
@@ -361,10 +365,204 @@ def api_sammenlign():
             vol    = ret.std()*np.sqrt(252)*100
             sharpe = (ret.mean()-RISIKOFRI_RENTE/252)/ret.std()*np.sqrt(252)
             dd     = ((df["Close"]-df["Close"].cummax())/df["Close"].cummax()).min()*100
-            resultat.append({"ticker":t,"avk":round(avk,2),"vol":round(vol,2),
-                              "sharpe":round(sharpe,3),"max_dd":round(dd,2)})
+
+            # Beta mot benchmark
+            bm = yf.download("^GSPC", period=periode, progress=False, auto_adjust=True)
+            if isinstance(bm.columns, pd.MultiIndex): bm.columns = bm.columns.get_level_values(0)
+            bret  = bm["Close"].pct_change().dropna()
+            felles = ret.index.intersection(bret.index)
+            if len(felles) > 10:
+                kov  = np.cov(ret.loc[felles], bret.loc[felles])
+                beta = round(kov[0,1]/kov[1,1], 2) if kov[1,1] != 0 else None
+            else:
+                beta = None
+
+            # Avkastning på ulike perioder
+            avk_data = {}
+            for p_navn, p_kode in [("1M","1mo"),("3M","3mo"),("6M","6mo"),("1Y","1y")]:
+                try:
+                    _df = yf.download(t, period=p_kode, progress=False, auto_adjust=True)
+                    if isinstance(_df.columns, pd.MultiIndex): _df.columns = _df.columns.get_level_values(0)
+                    if not _df.empty:
+                        avk_data[p_navn] = round((_df["Close"].iloc[-1]/_df["Close"].iloc[0]-1)*100, 2)
+                except: avk_data[p_navn] = None
+
+            # Kurshistorikk for graf
+            historikk = {
+                "datoer": [str(d)[:10] for d in df.index[-60:]],
+                "priser": [round(float(p),2) for p in df["Close"].iloc[-60:]]
+            }
+
+            resultat.append({
+                "ticker":     t,
+                "navn":       info.get("longName", t),
+                "sektor":     info.get("sector", "N/A"),
+                "pris":       safe(info.get("currentPrice")),
+                "mktcap":     stor_tall(info.get("marketCap")),
+                "pe":         safe(info.get("trailingPE")),
+                "forward_pe": safe(info.get("forwardPE")),
+                "utbytte":    safe(info.get("dividendYield"), pst=True),
+                "roe":        safe(info.get("returnOnEquity"), pst=True),
+                "bruttomargin": safe(info.get("grossMargins"), pst=True),
+                "driftsmargin": safe(info.get("operatingMargins"), pst=True),
+                "konsensus":  info.get("recommendationKey","N/A").upper(),
+                "mål":        safe(info.get("targetMeanPrice")),
+                "avk":        round(avk, 2),
+                "avk_perioder": avk_data,
+                "vol":        round(vol, 2),
+                "sharpe":     round(sharpe, 3),
+                "max_dd":     round(dd, 2),
+                "beta":       beta,
+                "historikk":  historikk,
+            })
         except: pass
-    return jsonify(resultat)
+
+    # AI sammenligning
+    ai_tekst = ""
+    if groq_key and len(resultat) >= 2:
+        sammendrag = "\n".join([
+            f"{r['ticker']} ({r['navn']}): P/E={r['pe']}, Sharpe={r['sharpe']}, "
+            f"Avk={r['avk']}%, Volatilitet={r['vol']}%, MaxDD={r['max_dd']}%, "
+            f"Sektor={r['sektor']}, Konsensus={r['konsensus']}"
+            for r in resultat
+        ])
+        prompt = f"""
+Du er aksjeanalytiker. Sammenlign disse aksjene og gi en strukturert vurdering på norsk.
+
+AKSJER:
+{sammendrag}
+
+Gi:
+1. Hvilken aksje har best risikojustert avkastning og hvorfor?
+2. Hvilken er billigst verdsatt (P/E, fundamentalt)?
+3. Hvilken har best momentum?
+4. Hvilken ville du unngått og hvorfor?
+5. Rangering fra beste til svakeste investering akkurat nå med begrunnelse
+
+Vær konkret og direkte. Maks 280 ord.
+"""
+        ai_tekst = spør_groq(prompt, groq_key, 1200)
+
+    return jsonify({"aksjer": resultat, "ai": ai_tekst})
+
+@app.route("/api/portefolje_analyse", methods=["POST"])
+def api_portefolje_analyse():
+    data      = request.json
+    posisjoner = data.get("posisjoner", [])
+    groq_key  = data.get("groq_key", "")
+
+    if not posisjoner:
+        return jsonify({"error": "Ingen posisjoner"}), 400
+
+    resultat = []
+    total_verdi   = 0
+    total_kostnad = 0
+
+    for pos in posisjoner:
+        try:
+            t      = pos["ticker"].upper()
+            antall = float(pos["antall"])
+            snitt  = float(pos["snittpris"])
+            kostnad = antall * snitt
+
+            aksje = yf.Ticker(t)
+            info  = aksje.info
+            df    = yf.download(t, period="1y", progress=False, auto_adjust=True)
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+
+            nåpris  = float(df["Close"].iloc[-1]) if not df.empty else snitt
+            nåverdi = antall * nåpris
+            gevinst = nåverdi - kostnad
+            pst_g   = (gevinst / kostnad) * 100
+
+            ret    = df["Close"].pct_change().dropna()
+            vol    = ret.std()*np.sqrt(252)*100
+            sharpe = (ret.mean()-RISIKOFRI_RENTE/252)/ret.std()*np.sqrt(252)
+
+            total_verdi   += nåverdi
+            total_kostnad += kostnad
+
+            # Kurshistorikk (90 dager)
+            historikk = {
+                "datoer": [str(d)[:10] for d in df.index[-90:]],
+                "priser": [round(float(p),2) for p in df["Close"].iloc[-90:]]
+            }
+
+            resultat.append({
+                "ticker":    t,
+                "navn":      info.get("longName", t),
+                "sektor":    info.get("sector","N/A"),
+                "antall":    antall,
+                "snittpris": snitt,
+                "nåpris":    round(nåpris, 2),
+                "kostnad":   round(kostnad, 2),
+                "nåverdi":   round(nåverdi, 2),
+                "gevinst":   round(gevinst, 2),
+                "pst":       round(pst_g, 2),
+                "vol":       round(vol, 2),
+                "sharpe":    round(sharpe, 3),
+                "pe":        safe(info.get("trailingPE")),
+                "konsensus": info.get("recommendationKey","N/A").upper(),
+                "mål":       safe(info.get("targetMeanPrice")),
+                "historikk": historikk,
+            })
+        except Exception as e:
+            resultat.append({
+                "ticker": pos.get("ticker","?"),
+                "feil": str(e)
+            })
+
+    total_gevinst = total_verdi - total_kostnad
+    total_pst     = (total_gevinst/total_kostnad*100) if total_kostnad else 0
+
+    # Sektorfordeling
+    sektorer = {}
+    for r in resultat:
+        if "feil" not in r:
+            s = r.get("sektor","Ukjent")
+            sektorer[s] = sektorer.get(s,0) + r["nåverdi"]
+
+    # AI analyse
+    ai_tekst = ""
+    if groq_key and resultat:
+        pos_info = "\n".join([
+            f"{r['ticker']} ({r.get('navn',r['ticker'])}): "
+            f"Antall={r.get('antall')}, Snittpris={r.get('snittpris')}, "
+            f"Nåpris={r.get('nåpris')}, Gevinst={r.get('pst','?')}%, "
+            f"Sektor={r.get('sektor','N/A')}, Sharpe={r.get('sharpe','N/A')}, "
+            f"Konsensus={r.get('konsensus','N/A')}, P/E={r.get('pe','N/A')}"
+            for r in resultat if "feil" not in r
+        ])
+        prompt = f"""
+Du er porteføljeforvalter. Analyser denne porteføljen og gi konkrete råd på norsk.
+
+PORTEFØLJE (total verdi: {round(total_verdi,2)}, total gevinst: {round(total_pst,2)}%):
+{pos_info}
+
+SEKTORFORDELING: {json.dumps({k: round(v/total_verdi*100,1) for k,v in sektorer.items()}, ensure_ascii=False)}
+
+Gi en grundig vurdering:
+1. Overordnet porteføljekvalitet — er den godt diversifisert?
+2. Beste posisjon og hvorfor den er sterk
+3. Svakeste posisjon — bør den selges eller holdes?
+4. Sektorkonsentrasjon — er det for mye i én sektor?
+5. Hva mangler porteføljen? (sektorer, geografi, vekst vs. verdi)
+6. Konkrete anbefalinger: ØKES / HOLD / REDUSER / SELG for hver posisjon
+7. Overordnet rangering av risiko (lav/middels/høy) med begrunnelse
+
+Vær direkte og handlingsorientert. Maks 350 ord.
+"""
+        ai_tekst = spør_groq(prompt, groq_key, 1500)
+
+    return jsonify({
+        "posisjoner":     resultat,
+        "total_verdi":    round(total_verdi, 2),
+        "total_kostnad":  round(total_kostnad, 2),
+        "total_gevinst":  round(total_gevinst, 2),
+        "total_pst":      round(total_pst, 2),
+        "sektorer":       sektorer,
+        "ai":             ai_tekst,
+    })
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
