@@ -24,9 +24,9 @@ MAKRO_TICKERS = {
     "S&P 500":       "^GSPC",
     "Nasdaq":        "^IXIC",
     "VIX":           "^VIX",
-    "US 10y rente":  "^TNX",
-    "Gull":          "GC=F",
-    "Olje (Brent)":  "BZ=F",
+    "US 10y Yield":  "^TNX",
+    "Gold":          "GC=F",
+    "Oil (Brent)":  "BZ=F",
     "EUR/USD":       "EURUSD=X",
     "USD/NOK":       "USDNOK=X",
 }
@@ -49,7 +49,7 @@ def stor_tall(n):
 
 def spør_groq(prompt: str, api_key: str, maks=1200) -> str:
     key = api_key or GROQ_API_KEY
-    if not key: return "Ingen Groq API-nøkkel angitt."
+    if not key: return "No Groq API key provided."
     try:
         klient = Groq(api_key=key)
         svar = klient.chat.completions.create(
@@ -59,7 +59,7 @@ def spør_groq(prompt: str, api_key: str, maks=1200) -> str:
         )
         return svar.choices[0].message.content.strip()
     except Exception as e:
-        return f"Groq-feil: {e}"
+        return f"Groq error: {e}"
 
 # ── Teknisk analyse ───────────────────────────────────────────────────────────
 
@@ -170,7 +170,7 @@ def lag_graf(df: pd.DataFrame, ticker: str) -> str:
           for i in range(1,len(df))]
     ax2.bar(df.index[1:], df["Volume"].iloc[1:], color=fc, alpha=0.6, width=1)
     ax2.plot(df.index, df["Vol_SMA20"], color=C["sma20"], lw=0.8, ls="--")
-    ax2.set_title("Volum", color=C["text"], fontsize=10)
+    ax2.set_title("Volume", color=C["text"], fontsize=10)
     ax2.tick_params(colors=C["text"]); ax2.spines[:].set_color("#1a2e1a")
 
     ax3 = fig.add_subplot(gs[2,0])
@@ -208,7 +208,7 @@ def lag_graf(df: pd.DataFrame, ticker: str) -> str:
     ax6.hist(dagret, bins=50, color=C["sma50"], alpha=0.6, edgecolor="none")
     ax6.axvline(dagret.mean(), color=C["sma20"], lw=1.2, ls="--")
     ax6.axvline(np.percentile(dagret,5), color=C["bear"], lw=1.0, ls=":")
-    ax6.set_title("Avkastningsfordeling", color=C["text"], fontsize=10)
+    ax6.set_title("Return Distribution", color=C["text"], fontsize=10)
     ax6.tick_params(colors=C["text"]); ax6.spines[:].set_color("#1a2e1a")
 
     buf = io.BytesIO()
@@ -237,7 +237,7 @@ def api_analyse():
         aksje = yf.Ticker(ticker)
         df    = yf.download(ticker, period=periode, progress=False, auto_adjust=True)
         if df.empty:
-            return jsonify({"error": f"Ingen data for {ticker}. Sjekk ticker-symbolet."}), 404
+            return jsonify({"error": f"No data for {ticker}. Check the ticker symbol."}), 404
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
         info = aksje.info
@@ -294,29 +294,29 @@ def api_analyse():
         "konsensus":  info.get("recommendationKey","N/A").upper(),
     }
 
-    # AI-vurdering
+    # AI analysis
     ai_tekst = ""
     if data.get("ai", False):
         prompt = f"""
-Du er aksjeanalytiker. Gi en kortfattet investeringsvurdering på norsk for {fundamental['navn']} ({ticker}).
+You are a stock analyst. Give a concise investment assessment for {fundamental['navn']} ({ticker}).
 
-Nøkkeltall: P/E={fundamental['pe']}, Forward P/E={fundamental['forward_pe']},
-Markedsverdi={fundamental['mktcap']}, ROE={fundamental['roe']}, Driftsmargin={fundamental['driftsmargin']},
-Konsensus={fundamental['konsensus']}
+Key metrics: P/E={fundamental['pe']}, Forward P/E={fundamental['forward_pe']},
+Market Cap={fundamental['mktcap']}, ROE={fundamental['roe']}, Operating Margin={fundamental['driftsmargin']},
+Consensus={fundamental['konsensus']}
 
-Teknisk: RSI={sig['rsi']}, MACD={'Bullish' if sig['macd_bull'] else 'Bearish'},
-SMA50={'Over' if sig['over_sma50'] else 'Under'}, SMA200={'Over' if sig['over_sma200'] else 'Under'}
+Technical: RSI={sig['rsi']}, MACD={'Bullish' if sig['macd_bull'] else 'Bearish'},
+SMA50={'Above' if sig['over_sma50'] else 'Below'}, SMA200={'Above' if sig['over_sma200'] else 'Below'}
 
-Risiko: Sharpe={ri.get('sharpe','N/A')}, MaxDD={ri.get('max_dd','N/A')}%, Beta={ri.get('beta','N/A')}
+Risk: Sharpe={ri.get('sharpe','N/A')}, MaxDD={ri.get('max_dd','N/A')}%, Beta={ri.get('beta','N/A')}
 
-Gi:
-1. Overordnet vurdering (2-3 setninger)
-2. Styrker (2-3 punkter)
-3. Risikoer (2-3 punkter)
-4. Teknisk timing
-5. Konklusjon: KJØP / HOLD / SELG
+Provide:
+1. Overall assessment (2-3 sentences)
+2. Key strengths (2-3 bullet points)
+3. Key risks (2-3 bullet points)
+4. Technical timing
+5. Conclusion: BUY / HOLD / SELL
 
-Maks 220 ord. Vær direkte og konkret.
+Max 220 words. Be direct and specific.
 """
         ai_tekst = spør_groq(prompt, groq_key)
 
@@ -417,29 +417,29 @@ def api_sammenlign():
             })
         except: pass
 
-    # AI sammenligning
+    # AI comparison
     ai_tekst = ""
     if groq_key and len(resultat) >= 2:
-        sammendrag = "\n".join([
+        summary = "\n".join([
             f"{r['ticker']} ({r['navn']}): P/E={r['pe']}, Sharpe={r['sharpe']}, "
-            f"Avk={r['avk']}%, Volatilitet={r['vol']}%, MaxDD={r['max_dd']}%, "
-            f"Sektor={r['sektor']}, Konsensus={r['konsensus']}"
+            f"Return={r['avk']}%, Volatility={r['vol']}%, MaxDD={r['max_dd']}%, "
+            f"Sector={r['sektor']}, Consensus={r['konsensus']}"
             for r in resultat
         ])
         prompt = f"""
-Du er aksjeanalytiker. Sammenlign disse aksjene og gi en strukturert vurdering på norsk.
+You are a stock analyst. Compare these stocks and give a structured assessment.
 
-AKSJER:
-{sammendrag}
+STOCKS:
+{summary}
 
-Gi:
-1. Hvilken aksje har best risikojustert avkastning og hvorfor?
-2. Hvilken er billigst verdsatt (P/E, fundamentalt)?
-3. Hvilken har best momentum?
-4. Hvilken ville du unngått og hvorfor?
-5. Rangering fra beste til svakeste investering akkurat nå med begrunnelse
+Provide:
+1. Which stock has the best risk-adjusted return and why?
+2. Which is the most attractively valued (P/E, fundamentals)?
+3. Which has the best momentum?
+4. Which would you avoid and why?
+5. Ranking from best to worst investment right now with reasoning
 
-Vær konkret og direkte. Maks 280 ord.
+Be specific and direct. Max 280 words.
 """
         ai_tekst = spør_groq(prompt, groq_key, 1200)
 
@@ -447,22 +447,22 @@ Vær konkret og direkte. Maks 280 ord.
 
 @app.route("/api/portefolje_analyse", methods=["POST"])
 def api_portefolje_analyse():
-    data      = request.json
+    data       = request.json
     posisjoner = data.get("posisjoner", [])
-    groq_key  = data.get("groq_key", "")
+    groq_key   = data.get("groq_key", "")
 
     if not posisjoner:
-        return jsonify({"error": "Ingen posisjoner"}), 400
+        return jsonify({"error": "No positions provided"}), 400
 
-    resultat = []
+    resultat      = []
     total_verdi   = 0
     total_kostnad = 0
 
     for pos in posisjoner:
         try:
-            t      = pos["ticker"].upper()
-            antall = float(pos["antall"])
-            snitt  = float(pos["snittpris"])
+            t       = pos["ticker"].upper()
+            antall  = float(pos["antall"])
+            snitt   = float(pos["snittpris"])
             kostnad = antall * snitt
 
             aksje = yf.Ticker(t)
@@ -470,19 +470,19 @@ def api_portefolje_analyse():
             df    = yf.download(t, period="1y", progress=False, auto_adjust=True)
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
-            nåpris  = float(df["Close"].iloc[-1]) if not df.empty else snitt
-            nåverdi = antall * nåpris
-            gevinst = nåverdi - kostnad
-            pst_g   = (gevinst / kostnad) * 100
+            curr_price = float(df["Close"].iloc[-1]) if not df.empty else snitt
+            curr_value = antall * curr_price
+            gain       = curr_value - kostnad
+            gain_pct   = (gain / kostnad) * 100
 
             ret    = df["Close"].pct_change().dropna()
             vol    = ret.std()*np.sqrt(252)*100
             sharpe = (ret.mean()-RISIKOFRI_RENTE/252)/ret.std()*np.sqrt(252)
 
-            total_verdi   += nåverdi
+            total_verdi   += curr_value
             total_kostnad += kostnad
 
-            # Kurshistorikk (90 dager)
+            # Price history (90 days)
             historikk = {
                 "datoer": [str(d)[:10] for d in df.index[-90:]],
                 "priser": [round(float(p),2) for p in df["Close"].iloc[-90:]]
@@ -494,11 +494,11 @@ def api_portefolje_analyse():
                 "sektor":    info.get("sector","N/A"),
                 "antall":    antall,
                 "snittpris": snitt,
-                "nåpris":    round(nåpris, 2),
+                "nåpris":    round(curr_price, 2),
                 "kostnad":   round(kostnad, 2),
-                "nåverdi":   round(nåverdi, 2),
-                "gevinst":   round(gevinst, 2),
-                "pst":       round(pst_g, 2),
+                "nåverdi":   round(curr_value, 2),
+                "gevinst":   round(gain, 2),
+                "pst":       round(gain_pct, 2),
                 "vol":       round(vol, 2),
                 "sharpe":    round(sharpe, 3),
                 "pe":        safe(info.get("trailingPE")),
@@ -507,50 +507,47 @@ def api_portefolje_analyse():
                 "historikk": historikk,
             })
         except Exception as e:
-            resultat.append({
-                "ticker": pos.get("ticker","?"),
-                "feil": str(e)
-            })
+            resultat.append({"ticker": pos.get("ticker","?"), "feil": str(e)})
 
-    total_gevinst = total_verdi - total_kostnad
-    total_pst     = (total_gevinst/total_kostnad*100) if total_kostnad else 0
+    total_gain = total_verdi - total_kostnad
+    total_pst  = (total_gain/total_kostnad*100) if total_kostnad else 0
 
-    # Sektorfordeling
+    # Sector breakdown
     sektorer = {}
     for r in resultat:
         if "feil" not in r:
-            s = r.get("sektor","Ukjent")
+            s = r.get("sektor","Unknown")
             sektorer[s] = sektorer.get(s,0) + r["nåverdi"]
 
-    # AI analyse
+    # AI analysis
     ai_tekst = ""
     if groq_key and resultat:
         pos_info = "\n".join([
             f"{r['ticker']} ({r.get('navn',r['ticker'])}): "
-            f"Antall={r.get('antall')}, Snittpris={r.get('snittpris')}, "
-            f"Nåpris={r.get('nåpris')}, Gevinst={r.get('pst','?')}%, "
-            f"Sektor={r.get('sektor','N/A')}, Sharpe={r.get('sharpe','N/A')}, "
-            f"Konsensus={r.get('konsensus','N/A')}, P/E={r.get('pe','N/A')}"
+            f"Shares={r.get('antall')}, AvgPrice={r.get('snittpris')}, "
+            f"CurrentPrice={r.get('nåpris')}, Gain={r.get('pst','?')}%, "
+            f"Sector={r.get('sektor','N/A')}, Sharpe={r.get('sharpe','N/A')}, "
+            f"Consensus={r.get('konsensus','N/A')}, P/E={r.get('pe','N/A')}"
             for r in resultat if "feil" not in r
         ])
         prompt = f"""
-Du er porteføljeforvalter. Analyser denne porteføljen og gi konkrete råd på norsk.
+You are a portfolio manager. Analyze this portfolio and give concrete recommendations.
 
-PORTEFØLJE (total verdi: {round(total_verdi,2)}, total gevinst: {round(total_pst,2)}%):
+PORTFOLIO (total value: {round(total_verdi,2)}, total gain: {round(total_pst,2)}%):
 {pos_info}
 
-SEKTORFORDELING: {json.dumps({k: round(v/total_verdi*100,1) for k,v in sektorer.items()}, ensure_ascii=False)}
+SECTOR BREAKDOWN: {json.dumps({k: round(v/total_verdi*100,1) for k,v in sektorer.items()})}
 
-Gi en grundig vurdering:
-1. Overordnet porteføljekvalitet — er den godt diversifisert?
-2. Beste posisjon og hvorfor den er sterk
-3. Svakeste posisjon — bør den selges eller holdes?
-4. Sektorkonsentrasjon — er det for mye i én sektor?
-5. Hva mangler porteføljen? (sektorer, geografi, vekst vs. verdi)
-6. Konkrete anbefalinger: ØKES / HOLD / REDUSER / SELG for hver posisjon
-7. Overordnet rangering av risiko (lav/middels/høy) med begrunnelse
+Provide a thorough assessment:
+1. Overall portfolio quality — is it well diversified?
+2. Strongest position and why
+3. Weakest position — should it be sold or held?
+4. Sector concentration — too much in one sector?
+5. What is the portfolio missing? (sectors, geography, growth vs. value)
+6. Specific recommendations: INCREASE / HOLD / REDUCE / SELL for each position
+7. Overall risk rating (low/medium/high) with reasoning
 
-Vær direkte og handlingsorientert. Maks 350 ord.
+Be direct and action-oriented. Max 350 words.
 """
         ai_tekst = spør_groq(prompt, groq_key, 1500)
 
@@ -558,7 +555,7 @@ Vær direkte og handlingsorientert. Maks 350 ord.
         "posisjoner":     resultat,
         "total_verdi":    round(total_verdi, 2),
         "total_kostnad":  round(total_kostnad, 2),
-        "total_gevinst":  round(total_gevinst, 2),
+        "total_gevinst":  round(total_gain, 2),
         "total_pst":      round(total_pst, 2),
         "sektorer":       sektorer,
         "ai":             ai_tekst,
@@ -570,7 +567,7 @@ def api_nyheter():
     ticker   = data.get("ticker","").strip().upper()
     groq_key = data.get("groq_key","")
     if not ticker:
-        return jsonify({"error": "Ingen ticker"}), 400
+        return jsonify({"error": "No ticker provided"}), 400
     try:
         aksje  = yf.Ticker(ticker)
         nyheter = aksje.news or []
@@ -597,22 +594,22 @@ def api_nyheter():
             except:
                 continue
 
-        # AI-sentimentanalyse
+        # AI sentiment analysis
         ai_sentiment = ""
         if groq_key and resultat:
-            overskrifter = "\n".join([f"- {n['tittel']}" for n in resultat])
+            headlines = "\n".join([f"- {n['tittel']}" for n in resultat])
             prompt = f"""
-Analyser disse nyhetsoverskriftene for {ticker} og gi en kort sentimentvurdering på norsk.
+Analyze these news headlines for {ticker} and give a brief sentiment assessment.
 
-NYHETER:
-{overskrifter}
+NEWS:
+{headlines}
 
-Gi:
-1. Overordnet sentiment: POSITIV / NØYTRAL / NEGATIV
-2. Hva er den viktigste nyheten og hvorfor?
-3. Hva betyr dette for aksjekursen på kort sikt (1–2 setninger)?
+Provide:
+1. Overall sentiment: POSITIVE / NEUTRAL / NEGATIVE
+2. What is the most important news and why?
+3. What does this mean for the stock price short-term? (1-2 sentences)
 
-Maks 100 ord. Vær direkte.
+Max 100 words. Be direct.
 """
             ai_sentiment = spør_groq(prompt, groq_key, 400)
 
@@ -622,8 +619,8 @@ Maks 100 ord. Vær direkte.
 
 @app.route("/api/watchlist_kurs", methods=["POST"])
 def api_watchlist_kurs():
-    data    = request.json
-    tickers = data.get("tickers", [])
+    data     = request.json
+    tickers  = data.get("tickers", [])
     resultat = []
     for t in tickers:
         try:
@@ -632,31 +629,27 @@ def api_watchlist_kurs():
             df    = yf.download(t, period="5d", progress=False, auto_adjust=True)
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             if df.empty:
-                resultat.append({"ticker": t, "feil": "Ingen data"})
+                resultat.append({"ticker": t, "feil": "No data"})
                 continue
-            siste   = float(df["Close"].iloc[-1])
-            forrige = float(df["Close"].iloc[-2]) if len(df) > 1 else siste
-            endring = (siste - forrige) / forrige * 100
-            # 52-ukers high/low for sparkline-kontekst
+            last    = float(df["Close"].iloc[-1])
+            prev    = float(df["Close"].iloc[-2]) if len(df) > 1 else last
+            change  = (last - prev) / prev * 100
             df52 = yf.download(t, period="1y", progress=False, auto_adjust=True)
             if isinstance(df52.columns, pd.MultiIndex): df52.columns = df52.columns.get_level_values(0)
-            høy52  = float(df52["Close"].max()) if not df52.empty else siste
-            lav52  = float(df52["Close"].min()) if not df52.empty else siste
-            # Siste 30 dagers priser for sparkline
-            sparkline = []
-            if not df52.empty:
-                sparkline = [round(float(p), 2) for p in df52["Close"].iloc[-30:]]
+            high52    = float(df52["Close"].max()) if not df52.empty else last
+            low52     = float(df52["Close"].min()) if not df52.empty else last
+            sparkline = [round(float(p), 2) for p in df52["Close"].iloc[-30:]] if not df52.empty else []
             resultat.append({
                 "ticker":    t,
                 "navn":      info.get("longName", t),
-                "sektor":    info.get("sector","N/A"),
-                "pris":      round(siste, 2),
-                "endring":   round(endring, 2),
-                "høy52":     round(høy52, 2),
-                "lav52":     round(lav52, 2),
+                "sektor":    info.get("sector", "N/A"),
+                "pris":      round(last, 2),
+                "endring":   round(change, 2),
+                "høy52":     round(high52, 2),
+                "lav52":     round(low52, 2),
                 "mktcap":    stor_tall(info.get("marketCap")),
                 "pe":        safe(info.get("trailingPE")),
-                "konsensus": info.get("recommendationKey","N/A").upper(),
+                "konsensus": info.get("recommendationKey", "N/A").upper(),
                 "sparkline": sparkline,
             })
         except Exception as e:
