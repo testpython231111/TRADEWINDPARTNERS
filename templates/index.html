@@ -64,10 +64,22 @@
     flex: 1; display: flex; gap: 20px; overflow: hidden;
     font-size: 11px; color: var(--text2);
   }
-  .ticker-item { white-space: nowrap; display: flex; gap: 6px; }
-  .ticker-item .val { color: var(--text3); }
-  .ticker-item .up  { color: var(--green); }
-  .ticker-item .dn  { color: var(--red); }
+  .ticker-item { white-space: nowrap; display: flex; gap: 6px; position: relative; cursor: default; padding: 2px 8px; border-left: 1px solid var(--border); }
+  .ticker-item:first-child { border-left: none; }
+  .ticker-item:hover { background: rgba(0,255,136,0.05); }
+  .ticker-item .label { color: var(--text2); font-size: 10px; }
+  .ticker-item .val { color: var(--text3); font-size: 11px; font-weight: 500; }
+  .ticker-item .up  { color: var(--green); font-size: 10px; }
+  .ticker-item .dn  { color: var(--red); font-size: 10px; }
+  .ticker-item .tooltip {
+    display: none; position: absolute; top: 100%; left: 0; z-index: 200;
+    background: var(--bg2); border: 1px solid var(--border);
+    padding: 8px 10px; white-space: nowrap; font-size: 10px;
+    color: var(--text3); min-width: 140px;
+  }
+  .ticker-item:hover .tooltip { display: block; }
+  .markedet-open  { color: var(--green); }
+  .markedet-lukket{ color: var(--red); }
 
   .clock { color: var(--green2); font-size: 11px; white-space: nowrap; }
 
@@ -325,9 +337,12 @@
 <div class="topbar">
   <div class="topbar-logo">AKSJE<span>ANALYSE</span> PRO</div>
   <div class="ticker-bar" id="tickerBar">
-    <div class="ticker-item"><span>LASTER MAKRODATA</span></div>
+    <div class="ticker-item"><span style="color:var(--text2)">LASTER...</span></div>
   </div>
-  <div class="clock" id="clock">--:--:--</div>
+  <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+    <div id="markedStatus" style="font-size:9px;letter-spacing:1px"></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
 </div>
 
 <!-- LAYOUT -->
@@ -395,9 +410,7 @@
       <div class="nav-item" onclick="visView('portefolje')" id="nav-portefolje">
         <span class="nav-icon">💼</span> PORTEFØLJE
       </div>
-      <div class="nav-item" onclick="visView('makro')" id="nav-makro">
-        <span class="nav-icon">🌍</span> MAKRO
-      </div>
+
       <div class="nav-item" onclick="visView('sammenlign')" id="nav-sammenlign">
         <span class="nav-icon">⚖</span> SAMMENLIGN
       </div>
@@ -472,18 +485,7 @@
       </div>
     </div>
 
-    <!-- MAKRO VIEW -->
-    <div id="view-makro" style="display:none">
-      <div class="panel">
-        <div class="panel-header">
-          <span class="panel-title">🌍 MAKROØKONOMISKE INDIKATORER</span>
-          <button class="btn" onclick="lastMakro()" style="width:auto;padding:4px 12px;font-size:10px">OPPDATER</button>
-        </div>
-        <div class="panel-body" id="makroPanelBody">
-          <div style="color:var(--text2); font-size:11px">Laster makrodata...</div>
-        </div>
-      </div>
-    </div>
+
 
     <!-- SAMMENLIGN VIEW -->
     <div id="view-sammenlign" style="display:none; flex-direction:column; gap:14px">
@@ -593,13 +595,12 @@ document.getElementById("groqKey").addEventListener("change", e => {
 
 // ── View switching ────────────────────────────────────────────────────────────
 function visView(navn) {
-  ["analyse","makro","sammenlign","portefolje"].forEach(v => {
+  ["analyse","sammenlign","portefolje"].forEach(v => {
     const el = document.getElementById("view-"+v);
     el.style.display = v===navn ? "flex" : "none";
     el.style.flexDirection = "column";
     document.getElementById("nav-"+v)?.classList.toggle("active", v===navn);
   });
-  if (navn==="makro") lastMakro();
 }
 // Show analyse by default
 document.getElementById("view-makro").style.display = "none";
@@ -863,32 +864,52 @@ function visResultat(d) {
   }
 }
 
-// ── Makro ─────────────────────────────────────────────────────────────────────
+// ── Makro (kun topplinje) ─────────────────────────────────────────────────────
 async function lastMakro() {
   try {
     const res  = await fetch("/api/makro");
     const data = await res.json();
 
-    // Oppdater ticker-bar
-    document.getElementById("tickerBar").innerHTML = data.map(d => `
-      <div class="ticker-item">
-        <span>${d.navn}</span>
-        <span class="val">${d.verdi}</span>
-        <span class="${d.endring >= 0 ? 'up' : 'dn'}">${d.endring >= 0 ? '▲' : '▼'}${Math.abs(d.endring).toFixed(2)}%</span>
-      </div>`).join("");
+    // Markedsstatus (US børs åpen 14:30–21:00 norsk tid)
+    const nå = new Date();
+    const utc = nå.getUTCHours() * 60 + nå.getUTCMinutes();
+    const dag = nå.getUTCDay();
+    const erÅpen = dag >= 1 && dag <= 5 && utc >= 870 && utc < 1260;
+    const statusEl = document.getElementById("markedStatus");
+    if (statusEl) {
+      statusEl.innerHTML = erÅpen
+        ? `<span class="markedet-open">● US ÅPEN</span>`
+        : `<span class="markedet-lukket">● US LUKKET</span>`;
+    }
 
-    // Oppdater makropanel
-    document.getElementById("makroPanelBody").innerHTML = `
-      <div class="makro-grid">
-        ${data.map(d => `
-          <div class="makro-cell">
-            <div class="makro-name">${d.navn}</div>
-            <div class="makro-val">${d.verdi}</div>
-            <div class="makro-chg ${d.endring >= 0 ? 'pos' : 'neg'}">
-              ${d.endring >= 0 ? '▲' : '▼'} ${Math.abs(d.endring).toFixed(2)}%
-            </div>
-          </div>`).join("")}
-      </div>`;
+    // Tooltip-tekst per indikator
+    const tooltips = {
+      "S&P 500":      "Bredt US aksjeindeks — 500 største selskaper",
+      "Nasdaq":       "Teknologi-tung US børs",
+      "VIX":          "Fryktindeks — over 30 = høy uro i markedet",
+      "US 10y rente": "Stigende rente = press på aksjer og vekst",
+      "Gull":         "Safe haven — stiger i usikre tider",
+      "Olje (Brent)": "Råolje — påvirker energiaksjer og inflasjon",
+      "EUR/USD":      "Euro mot dollar — styrke/svakhet i Europa",
+      "USD/NOK":      "Dollar mot krone — påvirker norske aksjer",
+    };
+
+    document.getElementById("tickerBar").innerHTML = data.map(d => {
+      const tip = tooltips[d.navn] || "";
+      const cls = d.endring >= 0 ? "up" : "dn";
+      const pil = d.endring >= 0 ? "▲" : "▼";
+      // Ekstra farge-logikk for VIX (høy = dårlig)
+      const vixAdvarsel = d.navn === "VIX" && parseFloat(d.verdi) > 25
+        ? `<span style="color:var(--red);font-size:9px"> !</span>` : "";
+      return `
+        <div class="ticker-item">
+          <span class="label">${d.navn}</span>
+          <span class="val">${d.verdi}${vixAdvarsel}</span>
+          <span class="${cls}">${pil}${Math.abs(d.endring).toFixed(2)}%</span>
+          ${tip ? `<div class="tooltip">${tip}</div>` : ""}
+        </div>`;
+    }).join("");
+
   } catch(e) {
     console.error("Makro-feil:", e);
   }
