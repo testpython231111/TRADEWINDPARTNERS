@@ -564,6 +564,105 @@ Vær direkte og handlingsorientert. Maks 350 ord.
         "ai":             ai_tekst,
     })
 
+@app.route("/api/nyheter", methods=["POST"])
+def api_nyheter():
+    data     = request.json
+    ticker   = data.get("ticker","").strip().upper()
+    groq_key = data.get("groq_key","")
+    if not ticker:
+        return jsonify({"error": "Ingen ticker"}), 400
+    try:
+        aksje  = yf.Ticker(ticker)
+        nyheter = aksje.news or []
+        resultat = []
+        for n in nyheter[:10]:
+            try:
+                # yfinance news structure
+                content = n.get("content", {})
+                tittel  = content.get("title") or n.get("title","Uten tittel")
+                kilde   = content.get("provider", {}).get("displayName","") or n.get("publisher","")
+                lenke   = content.get("canonicalUrl", {}).get("url","") or n.get("link","")
+                ts      = content.get("pubDate") or ""
+                # Parse dato
+                if ts:
+                    try:
+                        from datetime import datetime
+                        dato = datetime.strptime(ts[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+                    except:
+                        dato = ts[:10]
+                else:
+                    dato = ""
+                if tittel:
+                    resultat.append({"tittel": tittel, "kilde": kilde, "lenke": lenke, "dato": dato})
+            except:
+                continue
+
+        # AI-sentimentanalyse
+        ai_sentiment = ""
+        if groq_key and resultat:
+            overskrifter = "\n".join([f"- {n['tittel']}" for n in resultat])
+            prompt = f"""
+Analyser disse nyhetsoverskriftene for {ticker} og gi en kort sentimentvurdering på norsk.
+
+NYHETER:
+{overskrifter}
+
+Gi:
+1. Overordnet sentiment: POSITIV / NØYTRAL / NEGATIV
+2. Hva er den viktigste nyheten og hvorfor?
+3. Hva betyr dette for aksjekursen på kort sikt (1–2 setninger)?
+
+Maks 100 ord. Vær direkte.
+"""
+            ai_sentiment = spør_groq(prompt, groq_key, 400)
+
+        return jsonify({"nyheter": resultat, "ai_sentiment": ai_sentiment})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/watchlist_kurs", methods=["POST"])
+def api_watchlist_kurs():
+    data    = request.json
+    tickers = data.get("tickers", [])
+    resultat = []
+    for t in tickers:
+        try:
+            aksje = yf.Ticker(t)
+            info  = aksje.info
+            df    = yf.download(t, period="5d", progress=False, auto_adjust=True)
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+            if df.empty:
+                resultat.append({"ticker": t, "feil": "Ingen data"})
+                continue
+            siste   = float(df["Close"].iloc[-1])
+            forrige = float(df["Close"].iloc[-2]) if len(df) > 1 else siste
+            endring = (siste - forrige) / forrige * 100
+            # 52-ukers high/low for sparkline-kontekst
+            df52 = yf.download(t, period="1y", progress=False, auto_adjust=True)
+            if isinstance(df52.columns, pd.MultiIndex): df52.columns = df52.columns.get_level_values(0)
+            høy52  = float(df52["Close"].max()) if not df52.empty else siste
+            lav52  = float(df52["Close"].min()) if not df52.empty else siste
+            # Siste 30 dagers priser for sparkline
+            sparkline = []
+            if not df52.empty:
+                sparkline = [round(float(p), 2) for p in df52["Close"].iloc[-30:]]
+            resultat.append({
+                "ticker":    t,
+                "navn":      info.get("longName", t),
+                "sektor":    info.get("sector","N/A"),
+                "pris":      round(siste, 2),
+                "endring":   round(endring, 2),
+                "høy52":     round(høy52, 2),
+                "lav52":     round(lav52, 2),
+                "mktcap":    stor_tall(info.get("marketCap")),
+                "pe":        safe(info.get("trailingPE")),
+                "konsensus": info.get("recommendationKey","N/A").upper(),
+                "sparkline": sparkline,
+            })
+        except Exception as e:
+            resultat.append({"ticker": t, "feil": str(e)[:50]})
+    return jsonify(resultat)
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
