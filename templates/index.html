@@ -479,7 +479,6 @@
     <div style="margin-top:auto; font-size:9px; color:var(--text2); line-height:1.6">
       Data: Yahoo Finance<br>
       AI: Groq LLaMA 3.3 70B<br>
-      Made by Sebastian Johnsen<br>
       ⚠ Not financial advice
     </div>
   </aside>
@@ -536,6 +535,8 @@
             <div class="tab" onclick="byttTab('graf')">CHARTS</div>
             <div class="tab" onclick="byttTab('nyheter')" id="nyheterTab">NEWS</div>
             <div class="tab" onclick="byttTab('earnings')" id="earningsTab">EARNINGS</div>
+            <div class="tab" onclick="byttTab('analyst')" id="analystTab">ANALYSTS</div>
+            <div class="tab" onclick="byttTab('insider')" id="insiderTab">INSIDER</div>
             <div class="tab" onclick="byttTab('ai')" id="aiTab" style="color:var(--yellow)">AI ANALYSIS</div>
           </div>
           <div class="tab-pane active" id="pane-teknisk"></div>
@@ -560,6 +561,8 @@
           </div>
           <div class="tab-pane" id="pane-nyheter"></div>
           <div class="tab-pane" id="pane-earnings"></div>
+          <div class="tab-pane" id="pane-analyst"></div>
+          <div class="tab-pane" id="pane-insider"></div>
           <div class="tab-pane" id="pane-ai"></div>
         </div>
 
@@ -1120,6 +1123,16 @@ function visResultat(d) {
     `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching earnings data...</div>`;
   lastEarnings(d.ticker);
 
+  // ── Analyst targets ──
+  document.getElementById("pane-analyst").innerHTML =
+    `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching analyst data...</div>`;
+  lastAnalyst(d.ticker);
+
+  // ── Insider trading ──
+  document.getElementById("pane-insider").innerHTML =
+    `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching insider transactions...</div>`;
+  lastInsider(d.ticker);
+
   // ── AI ──
   if (d.ai) {
     const aiFormatert = d.ai
@@ -1490,6 +1503,160 @@ async function analyserPortefoljeData(medAI) {
 }
 
 // ── Nyheter ───────────────────────────────────────────────────────────────────
+async function lastAnalyst(ticker) {
+  try {
+    const res  = await fetch("/api/analyst", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ticker})
+    });
+    const d = await res.json();
+    if (d.error) { document.getElementById("pane-analyst").innerHTML = `<div class="alert alert-info" style="margin:10px">${d.error}</div>`; return; }
+
+    // Consensus summary bar
+    const total = (d.strongBuy||0)+(d.buy||0)+(d.hold||0)+(d.sell||0)+(d.strongSell||0);
+    const pct   = v => total ? Math.round(v/total*100) : 0;
+    const consHtml = total ? `
+      <div style="margin-bottom:18px">
+        <div style="display:flex;gap:4px;height:18px;border-radius:2px;overflow:hidden;margin-bottom:6px">
+          <div style="width:${pct(d.strongBuy)}%;background:#00cc66" title="Strong Buy"></div>
+          <div style="width:${pct(d.buy)}%;background:#00ff88" title="Buy"></div>
+          <div style="width:${pct(d.hold)}%;background:var(--yellow)" title="Hold"></div>
+          <div style="width:${pct(d.sell)}%;background:#ff8844" title="Sell"></div>
+          <div style="width:${pct(d.strongSell)}%;background:var(--red)" title="Strong Sell"></div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:10px;flex-wrap:wrap">
+          <span style="color:#00cc66">■ STRONG BUY ${d.strongBuy||0}</span>
+          <span style="color:#00ff88">■ BUY ${d.buy||0}</span>
+          <span style="color:var(--yellow)">■ HOLD ${d.hold||0}</span>
+          <span style="color:#ff8844">■ SELL ${d.sell||0}</span>
+          <span style="color:var(--red)">■ STRONG SELL ${d.strongSell||0}</span>
+          <span style="color:var(--text2);margin-left:auto">${total} analysts</span>
+        </div>
+      </div>` : "";
+
+    // Price target
+    const ptHtml = (d.targetMean || d.targetHigh || d.targetLow) ? `
+      <div style="background:var(--bg3);border:1px solid var(--border);padding:12px 16px;margin-bottom:16px;display:flex;gap:24px;flex-wrap:wrap">
+        ${d.targetLow    ? `<div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">LOW TARGET</div><div style="font-size:15px;color:var(--text3)">${d.currency||''}${d.targetLow}</div></div>` : ""}
+        ${d.targetMean   ? `<div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">MEAN TARGET</div><div style="font-size:18px;color:var(--green);font-weight:500">${d.currency||''}${d.targetMean}</div></div>` : ""}
+        ${d.targetHigh   ? `<div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">HIGH TARGET</div><div style="font-size:15px;color:var(--text3)">${d.currency||''}${d.targetHigh}</div></div>` : ""}
+        ${d.currentPrice ? `<div style="margin-left:auto"><div style="font-size:9px;color:var(--text2);margin-bottom:3px">CURRENT PRICE</div><div style="font-size:15px;color:var(--text3)">${d.currency||''}${d.currentPrice}</div></div>` : ""}
+        ${d.upside !== null ? `<div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">UPSIDE (mean)</div>
+          <div style="font-size:15px;color:${d.upside>=0?'var(--green)':'var(--red)'};font-weight:500">
+            ${d.upside>=0?'▲':'▼'}${Math.abs(d.upside)}%
+          </div></div>` : ""}
+      </div>` : "";
+
+    // Upgrades/downgrades table
+    let upgradeHtml = "";
+    if (d.upgrades && d.upgrades.length) {
+      const rows = d.upgrades.map(u => {
+        const act = (u.action||"").toLowerCase();
+        const col = act.includes("up") || act.includes("init") || act.includes("rais") ? "var(--green)"
+                  : act.includes("down") || act.includes("lower") ? "var(--red)" : "var(--yellow)";
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:7px 10px;color:var(--text2)">${u.date||""}</td>
+          <td style="padding:7px 10px;color:var(--text3)">${u.firm||""}</td>
+          <td style="padding:7px 10px;color:${col};font-size:10px;letter-spacing:1px">${(u.action||"").toUpperCase()}</td>
+          <td style="padding:7px 10px;color:var(--text2)">${u.fromGrade||"—"}</td>
+          <td style="padding:7px 10px;color:var(--text3)">${u.toGrade||"—"}</td>
+        </tr>`;
+      }).join("");
+      upgradeHtml = `
+        <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:8px">RECENT UPGRADES / DOWNGRADES</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">DATE</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">FIRM</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">ACTION</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">FROM</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">TO</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    document.getElementById("pane-analyst").innerHTML =
+      `<div style="padding:14px">${consHtml}${ptHtml}${upgradeHtml}</div>`;
+  } catch(e) {
+    document.getElementById("pane-analyst").innerHTML =
+      `<div class="alert alert-error" style="margin:10px">Could not load analyst data: ${e.message}</div>`;
+  }
+}
+
+async function lastInsider(ticker) {
+  try {
+    const res  = await fetch("/api/insider", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ticker})
+    });
+    const d = await res.json();
+    if (d.error) { document.getElementById("pane-insider").innerHTML = `<div class="alert alert-info" style="margin:10px">${d.error}</div>`; return; }
+
+    const trans = d.transactions || [];
+    if (!trans.length) {
+      document.getElementById("pane-insider").innerHTML =
+        `<div style="padding:20px;text-align:center;color:var(--text2);font-size:11px">No recent insider transactions found.</div>`;
+      return;
+    }
+
+    // Summary bar
+    const buys  = trans.filter(t => (t.type||"").toLowerCase().includes("buy") || (t.type||"").toLowerCase().includes("purchase")).length;
+    const sells = trans.length - buys;
+    const summaryHtml = `
+      <div style="display:flex;gap:16px;background:var(--bg3);border:1px solid var(--border);
+                  padding:12px 16px;margin-bottom:16px;flex-wrap:wrap">
+        <div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">TOTAL TRANSACTIONS</div>
+          <div style="font-size:16px;color:var(--text3)">${trans.length}</div></div>
+        <div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">BUYS / ACQUISITIONS</div>
+          <div style="font-size:16px;color:var(--green)">${buys}</div></div>
+        <div><div style="font-size:9px;color:var(--text2);margin-bottom:3px">SELLS / DISPOSALS</div>
+          <div style="font-size:16px;color:var(--red)">${sells}</div></div>
+        <div style="margin-left:auto;display:flex;align-items:center">
+          <span style="font-size:${buys>sells?'13':'11'}px;color:${buys>sells?'var(--green)':buys<sells?'var(--red)':'var(--yellow)'}">
+            ${buys>sells ? '▲ More buying than selling' : buys<sells ? '▼ More selling than buying' : '= Balanced activity'}
+          </span>
+        </div>
+      </div>`;
+
+    const rows = trans.map(t => {
+      const isBuy = (t.type||"").toLowerCase().includes("buy") || (t.type||"").toLowerCase().includes("purchase") || (t.type||"").toLowerCase().includes("acquisition");
+      const col   = isBuy ? "var(--green)" : "var(--red)";
+      const shares = t.shares ? Number(t.shares).toLocaleString() : "—";
+      const value  = t.value  ? "$" + Number(t.value).toLocaleString()  : "—";
+      return `<tr style="border-bottom:1px solid var(--border)" title="${t.type||''}">
+        <td style="padding:7px 10px;color:var(--text2)">${t.date||""}</td>
+        <td style="padding:7px 10px;color:var(--text3)">${t.name||""}</td>
+        <td style="padding:7px 10px;color:var(--text2);font-size:10px">${t.title||""}</td>
+        <td style="padding:7px 10px;color:${col};font-size:10px;letter-spacing:1px">${isBuy?"▲ BUY":"▼ SELL"}</td>
+        <td style="padding:7px 10px;color:var(--text3);text-align:right">${shares}</td>
+        <td style="padding:7px 10px;color:var(--text2);text-align:right">${value}</td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("pane-insider").innerHTML = `
+      <div style="padding:14px">
+        ${summaryHtml}
+        <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:8px">RECENT TRANSACTIONS</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">DATE</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">NAME</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">TITLE</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">TYPE</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:right">SHARES</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:right">VALUE</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="font-size:9px;color:var(--text2);margin-top:8px">Source: SEC Form 4 filings via Yahoo Finance</div>
+      </div>`;
+  } catch(e) {
+    document.getElementById("pane-insider").innerHTML =
+      `<div class="alert alert-error" style="margin:10px">Could not load insider data: ${e.message}</div>`;
+  }
+}
+
 async function lastNyheter(ticker) {
   const groqKey = document.getElementById("groqKey").value.trim();
   try {
