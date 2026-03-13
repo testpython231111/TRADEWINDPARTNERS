@@ -640,6 +640,7 @@ def api_insider():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/sammenlign", methods=["POST"])
 def api_sammenlign():
     data     = request.json
     tickers  = data.get("tickers", [])
