@@ -490,19 +490,58 @@ def api_analyst():
             ratings = aksje.analyst_price_targets
         except: ratings = None
 
-        # Upgrades/downgrades
+        # Upgrades/downgrades — map Yahoo action codes to readable labels
+        ACTION_MAP = {
+            "main":     ("MAINTAIN",  "var(--text2)"),
+            "reit":     ("REITERATE", "var(--text2)"),
+            "init":     ("INITIATED", "var(--blue)"),
+            "upgrade":  ("UPGRADE",   "var(--green)"),
+            "downgrade":("DOWNGRADE", "var(--red)"),
+            "resume":   ("RESUMED",   "var(--blue)"),
+            "suspend":  ("SUSPENDED", "var(--yellow)"),
+            "coverage": ("INITIATED", "var(--blue)"),
+        }
+
         upgrades = []
         try:
             ug = aksje.upgrades_downgrades
             if ug is not None and not ug.empty:
-                ug = ug.sort_index(ascending=False).head(15)
+                ug = ug.sort_index(ascending=False).head(20)
                 for idx, row in ug.iterrows():
+                    raw_action = str(row.get("Action","")).lower().strip()
+                    from_grade = str(row.get("From Grade","")).strip()
+                    to_grade   = str(row.get("To Grade","")).strip()
+
+                    # Try to infer upgrade/downgrade from grade change if action is just "main"
+                    if raw_action in ("main","reit") and from_grade and to_grade and from_grade != to_grade:
+                        # Grades ranked best to worst
+                        grade_rank = {
+                            "strong buy":5,"outperform":4,"overweight":4,"buy":4,
+                            "market perform":3,"neutral":3,"equal-weight":3,"hold":3,"sector perform":3,
+                            "underperform":2,"underweight":2,"sell":1,"strong sell":1
+                        }
+                        f = grade_rank.get(from_grade.lower(), 3)
+                        t = grade_rank.get(to_grade.lower(), 3)
+                        if t > f:   raw_action = "upgrade"
+                        elif t < f: raw_action = "downgrade"
+
+                    label, color = ACTION_MAP.get(raw_action, (raw_action.upper(), "var(--text2)"))
+
+                    # Build readable rating string
+                    rating = ""
+                    if from_grade and to_grade and from_grade != to_grade:
+                        rating = f"{from_grade} → {to_grade}"
+                    elif to_grade:
+                        rating = to_grade
+                    elif from_grade:
+                        rating = from_grade
+
                     upgrades.append({
-                        "date":      str(idx)[:10],
-                        "firm":      str(row.get("Firm","")),
-                        "action":    str(row.get("Action","")),
-                        "fromGrade": str(row.get("From Grade","")),
-                        "toGrade":   str(row.get("To Grade","")),
+                        "date":   str(idx)[:10],
+                        "firm":   str(row.get("Firm","")),
+                        "action": label,
+                        "color":  color,
+                        "rating": rating,
                     })
         except: pass
 
