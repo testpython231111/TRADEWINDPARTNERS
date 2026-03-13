@@ -152,8 +152,8 @@
   }
   .btn:hover { background: var(--green2); color: var(--bg); }
   .btn:active { transform: scale(0.98); }
-  .btn-ai { border-color: var(--yellow); color: var(--yellow); }
-  .btn-ai:hover { background: var(--yellow); color: var(--bg); }
+  .btn-ai { border-color: var(--green); color: var(--green); }
+  .btn-ai:hover { background: var(--green); color: var(--bg); }
 
   .divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 
@@ -526,8 +526,7 @@
       </div>
 
       <div style="margin-top:10px; display:flex; gap:6px; flex-direction:column">
-        <button class="btn" onclick="kjørAnalyse(false)">▶ ANALYZE</button>
-        <button class="btn btn-ai" onclick="kjørAnalyse(true)">⬡ ANALYZE + AI</button>
+        <button class="btn btn-ai" onclick="kjørAnalyse(true)">▶ ANALYZE</button>
       </div>
     </div>
 
@@ -968,7 +967,7 @@ async function kjørAnalyse(medAI) {
   const groqKey = "";
   if (!ticker) return;
 
-  visLoader(medAI ? "Fetching data and querying AI..." : "Fetching market data...");
+  visLoader("Fetching market data and running AI analysis...");
 
   try {
     const res = await fetch("/api/analyse", {
@@ -1241,7 +1240,7 @@ function visResultat(d) {
   } else {
     document.getElementById("pane-ai").innerHTML = `
       <div class="alert alert-info">
-        Press <strong>ANALYZE + AI</strong> to get an AI assessment from Groq.<br>
+        Press <strong>ANALYZE</strong> to get an AI assessment.<br>
         Remember to add your Groq API key.
       </div>`;
   }
