@@ -357,6 +357,103 @@
   /* ── Sparkline ── */
   .sparkline { width: 80px; height: 28px; }
 
+  /* ── Mobile hamburger ── */
+  .hamburger {
+    display: none; flex-direction: column; gap: 4px;
+    cursor: pointer; padding: 4px; flex-shrink: 0;
+  }
+  .hamburger span {
+    display: block; width: 18px; height: 2px;
+    background: var(--green); transition: all 0.2s;
+  }
+
+  /* ── PDF Export button ── */
+  .pdf-btn {
+    background: none; border: 1px solid var(--border);
+    color: var(--text2); font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px; padding: 3px 8px; cursor: pointer;
+    letter-spacing: 1px; transition: all 0.2s; white-space: nowrap;
+  }
+  .pdf-btn:hover { border-color: var(--green2); color: var(--green); }
+
+  /* ── Mobile styles ── */
+  @media (max-width: 768px) {
+    .hamburger { display: flex; }
+    .ticker-bar { display: none; }
+    .topbar { gap: 12px; padding: 0 12px; }
+    .topbar-logo { font-size: 11px; letter-spacing: 2px; }
+    .clock { display: none; }
+    #themeBtn { font-size: 8px; padding: 2px 6px; }
+
+    .layout { grid-template-columns: 1fr; }
+
+    .sidebar {
+      display: none;
+      position: fixed; top: 44px; left: 0; right: 0; bottom: 0;
+      z-index: 500; overflow-y: auto;
+      grid-row: auto;
+    }
+    .sidebar.open { display: flex; }
+
+    .main { padding: 10px 12px; }
+
+    .stock-header { grid-template-columns: 1fr; }
+    .stock-price-block { text-align: left; }
+    .stock-price { font-size: 22px; }
+
+    .data-grid { grid-template-columns: 1fr; }
+
+    .signal-grid { grid-template-columns: 1fr 1fr; }
+
+    .tabs { overflow-x: auto; flex-wrap: nowrap; }
+    .tab { padding: 8px 10px; font-size: 9px; white-space: nowrap; }
+
+    .wl-row, .wl-header {
+      grid-template-columns: 70px 1fr 65px 55px;
+    }
+    .wl-row > span:nth-child(5),
+    .wl-row > span:nth-child(6),
+    .wl-row > span:nth-child(7),
+    .wl-header > span:nth-child(5),
+    .wl-header > span:nth-child(6),
+    .wl-header > span:nth-child(7) { display: none; }
+
+    .sektorGrid { grid-template-columns: 1fr 1fr !important; }
+
+    table { font-size: 10px; }
+    table td, table th { padding: 5px 6px !important; }
+  }
+
+  @media (max-width: 480px) {
+    .signal-grid { grid-template-columns: 1fr; }
+    .sektorGrid  { grid-template-columns: 1fr !important; }
+    .stock-name  { font-size: 15px; }
+  }
+
+  /* ── Print / PDF styles ── */
+  @media print {
+    body { background: white !important; color: black !important; font-size: 11px; }
+    body::before { display: none; }
+    .topbar, .sidebar, .tabs, .btn, .pdf-btn,
+    #pane-graf, #pane-nyheter, #pane-ai { display: none !important; }
+    .layout { display: block; }
+    .main { padding: 0; overflow: visible; }
+    .panel { border: 1px solid #ccc !important; background: white !important; break-inside: avoid; margin-bottom: 12px; }
+    .panel-header { background: #f0f0f0 !important; }
+    .panel-title { color: #333 !important; }
+    .data-cell { background: white !important; border-bottom: 1px solid #eee; }
+    .cell-label { color: #666 !important; }
+    .cell-value { color: #111 !important; }
+    .tab-pane { display: block !important; }
+    #pane-teknisk, #pane-fundamental, #pane-risiko,
+    #pane-earnings, #pane-analyst, #pane-insider { display: block !important; }
+    .pos { color: #006600 !important; }
+    .neg { color: #cc0000 !important; }
+    a { color: #0000cc; }
+    #resultat { display: flex !important; flex-direction: column; gap: 10px; }
+    #welcome { display: none !important; }
+  }
+
   /* ── Watchlist row ── */
   .wl-row {
     display: grid;
@@ -385,6 +482,9 @@
 
 <!-- TOP BAR -->
 <div class="topbar">
+  <div class="hamburger" id="hamburger" onclick="toggleSidebar()">
+    <span></span><span></span><span></span>
+  </div>
   <div class="topbar-logo">STOCK<span>ANALYSIS</span> PRO</div>
   <div class="ticker-bar" id="tickerBar">
     <div class="ticker-item"><span style="color:var(--text2)">LOADING...</span></div>
@@ -927,7 +1027,10 @@ function visResultat(d) {
   document.getElementById("stockHeader").innerHTML = `
     <div class="panel-header">
       <span class="panel-title">${d.ticker} — OVERVIEW</span>
-      ${konsensusHtml(f.konsensus)}
+      <div style="display:flex;gap:8px;align-items:center">
+        ${konsensusHtml(f.konsensus)}
+        <button class="pdf-btn" onclick="exportPDF()" title="Export analysis as PDF">⬇ PDF</button>
+      </div>
     </div>
     <div class="panel-body">
       <div class="stock-header">
@@ -1783,6 +1886,44 @@ async function oppdaterWatchlist() {
 }
 
 window.addEventListener("load", () => { tegnWatchlist(); });
+
+// ── Mobile sidebar toggle ─────────────────────────────────────────────────────
+function toggleSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  sidebar.classList.toggle('open');
+}
+// Close sidebar when nav item clicked on mobile
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      document.querySelector('.sidebar').classList.remove('open');
+    }
+  });
+});
+
+// ── PDF Export ────────────────────────────────────────────────────────────────
+function exportPDF() {
+  // Make all tab panes visible for print
+  const panes = document.querySelectorAll('.tab-pane');
+  const prevDisplay = [];
+  panes.forEach((p, i) => {
+    prevDisplay[i] = p.style.display;
+    p.style.display = 'block';
+  });
+
+  // Set title for PDF
+  const origTitle = document.title;
+  const ticker = document.querySelector('.panel-title')?.textContent?.split('—')[0]?.trim() || 'Analysis';
+  document.title = `${ticker} — Stock Analysis PRO`;
+
+  window.print();
+
+  // Restore after print dialog closes
+  setTimeout(() => {
+    panes.forEach((p, i) => { p.style.display = prevDisplay[i]; });
+    document.title = origTitle;
+  }, 1000);
+}
 
 // ── Theme toggle ──────────────────────────────────────────────────────────────
 function toggleTheme() {
