@@ -446,30 +446,29 @@ def api_ai_analyse():
         except: pass
 
         prompt = f"""
-You are a senior stock analyst. Give a comprehensive investment assessment for {fundamental['navn']} ({ticker}).
+You are a senior equity analyst at a professional investment firm. Provide a rigorous investment assessment for {fundamental['navn']} ({ticker}).
 
-FUNDAMENTALS: P/E={fundamental['pe']}, Forward P/E={fundamental['forward_pe']}, Market Cap={fundamental['mktcap']}, ROE={fundamental['roe']}, Operating Margin={fundamental['driftsmargin']}, Consensus={fundamental['konsensus']}
+FUNDAMENTALS: P/E={fundamental['pe']}, Forward P/E={fundamental['forward_pe']}, Market Cap={fundamental['mktcap']}, ROE={fundamental['roe']}, Operating Margin={fundamental['driftsmargin']}, Analyst Consensus={fundamental['konsensus']}
 
-TECHNICAL: RSI={sig['rsi']}, MACD={'Bullish' if sig['macd_bull'] else 'Bearish'}, SMA50={'Above' if sig['over_sma50'] else 'Below'}, SMA200={'Above' if sig['over_sma200'] else 'Below'}
+TECHNICAL SIGNALS: RSI={sig['rsi']}, MACD={'Bullish crossover' if sig['macd_bull'] else 'Bearish crossover'}, Price vs SMA50={'Above — bullish' if sig['over_sma50'] else 'Below — bearish'}, Price vs SMA200={'Above — uptrend' if sig['over_sma200'] else 'Below — downtrend'}
 
-RISK: Sharpe={ri.get('sharpe','N/A')}, Max Drawdown={ri.get('max_dd','N/A')}%, Beta={ri.get('beta','N/A')}
+RISK METRICS: Sharpe={ri.get('sharpe','N/A')}, Max Drawdown={ri.get('max_dd','N/A')}%, Beta={ri.get('beta','N/A')}, Sortino={ri.get('sortino','N/A')}
 
-{f'ANALYST DATA: {analyst_ctx}' if analyst_ctx else ''}
+{f'WALL STREET: {analyst_ctx}' if analyst_ctx else ''}
 {f'INSIDER ACTIVITY: {insider_ctx}' if insider_ctx else ''}
-{f'EARNINGS: {earnings_ctx}' if earnings_ctx else ''}
+{f'EARNINGS TRACK RECORD: {earnings_ctx}' if earnings_ctx else ''}
 {f'SHORT INTEREST: {short_ctx}' if short_ctx else ''}
-{f'OPTIONS FLOW: {options_ctx}' if options_ctx else ''}
+{f'OPTIONS MARKET POSITIONING: {options_ctx}' if options_ctx else ''}
 
-Provide a structured analysis:
-1. **Overall Assessment** (2-3 sentences combining all signals)
-2. **Key Strengths** (3 bullet points)
-3. **Key Risks** (3 bullet points)
-4. **What Insiders & Analysts Signal** (1-2 sentences)
-5. **Short Interest & Options Flow** (1-2 sentences — interpret what short sellers and options traders are positioning for)
-6. **Technical Timing** (1-2 sentences)
-7. **Verdict: BUY / HOLD / SELL** with one-line justification
+Structure your response exactly as follows:
+1. **Overall Assessment** — 2-3 sentences synthesizing the complete picture across fundamentals, technicals, and sentiment
+2. **Key Strengths** — 3 specific bullet points with data to support each
+3. **Key Risks** — 3 specific bullet points, be candid about downside scenarios
+4. **Smart Money Signals** — 1-2 sentences on what insiders, analysts, short sellers, and options traders are collectively signaling
+5. **Entry Timing** — 1-2 sentences on whether technicals support buying now or waiting
+6. **Verdict: BUY / HOLD / SELL** — one decisive sentence with the primary reason
 
-Max 320 words. Be direct, specific, and integrate all available data.
+Max 320 words. Be specific, data-driven, and direct. Avoid generic statements.
 """
         ai_tekst = spør_groq(prompt, groq_key, 1500)
         return jsonify({"ai": ai_tekst})
@@ -889,67 +888,72 @@ def api_sammenlign():
     groq_key = os.environ.get("GROQ_API_KEY", data.get("groq_key",""))
     resultat = []
 
+    # Download benchmark once outside the loop
+    bm_ret = None
+    try:
+        bm = yf.download(BENCHMARK, period="1y", progress=False, auto_adjust=True)
+        if not bm.empty:
+            if isinstance(bm.columns, pd.MultiIndex): bm.columns = bm.columns.get_level_values(0)
+            bm_ret = bm["Close"].pct_change().dropna()
+    except: pass
+
     for t in tickers:
         try:
             aksje = yf.Ticker(t)
             info  = aksje.info
-            df    = yf.download(t, period=periode, progress=False, auto_adjust=True)
+            # Always use 1y — covers all sub-periods, no extra downloads needed
+            df = yf.download(t, period="1y", progress=False, auto_adjust=True)
             if df.empty: continue
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+
+            last   = float(df["Close"].iloc[-1])
             ret    = df["Close"].pct_change().dropna()
-            avk    = (df["Close"].iloc[-1]/df["Close"].iloc[0]-1)*100
-            vol    = ret.std()*np.sqrt(252)*100
-            sharpe = (ret.mean()-RISIKOFRI_RENTE/252)/ret.std()*np.sqrt(252)
-            dd     = ((df["Close"]-df["Close"].cummax())/df["Close"].cummax()).min()*100
+            avk    = (last / float(df["Close"].iloc[0]) - 1) * 100
+            vol    = ret.std() * np.sqrt(252) * 100
+            sharpe = (ret.mean() - RISIKOFRI_RENTE/252) / ret.std() * np.sqrt(252)
+            dd     = ((df["Close"] - df["Close"].cummax()) / df["Close"].cummax()).min() * 100
 
-            # Beta mot benchmark
-            bm = yf.download("^GSPC", period=periode, progress=False, auto_adjust=True)
-            if isinstance(bm.columns, pd.MultiIndex): bm.columns = bm.columns.get_level_values(0)
-            bret  = bm["Close"].pct_change().dropna()
-            felles = ret.index.intersection(bret.index)
-            if len(felles) > 10:
-                kov  = np.cov(ret.loc[felles], bret.loc[felles])
-                beta = round(kov[0,1]/kov[1,1], 2) if kov[1,1] != 0 else None
-            else:
-                beta = None
+            # Beta using pre-downloaded benchmark
+            beta = None
+            if bm_ret is not None:
+                felles = ret.index.intersection(bm_ret.index)
+                if len(felles) > 10:
+                    kov  = np.cov(ret.loc[felles], bm_ret.loc[felles])
+                    beta = round(kov[0,1]/kov[1,1], 2) if kov[1,1] != 0 else None
 
-            # Avkastning på ulike perioder
-            avk_data = {}
-            for p_navn, p_kode in [("1M","1mo"),("3M","3mo"),("6M","6mo"),("1Y","1y")]:
-                try:
-                    _df = yf.download(t, period=p_kode, progress=False, auto_adjust=True)
-                    if isinstance(_df.columns, pd.MultiIndex): _df.columns = _df.columns.get_level_values(0)
-                    if not _df.empty:
-                        avk_data[p_navn] = round((_df["Close"].iloc[-1]/_df["Close"].iloc[0]-1)*100, 2)
-                except: avk_data[p_navn] = None
+            # Period returns from existing data — no extra downloads
+            def sub_pct(n):
+                try: return round((last / float(df["Close"].iloc[-n]) - 1) * 100, 2)
+                except: return None
 
-            # Kurshistorikk for graf
+            avk_data = {"1M": sub_pct(21), "3M": sub_pct(63), "6M": sub_pct(126), "1Y": round(avk, 2)}
+
             historikk = {
                 "datoer": [str(d)[:10] for d in df.index[-60:]],
-                "priser": [round(float(p),2) for p in df["Close"].iloc[-60:]]
+                "priser": [round(float(p), 2) for p in df["Close"].iloc[-60:]]
             }
 
             resultat.append({
-                "ticker":     t,
-                "navn":       info.get("longName", t),
-                "sektor":     info.get("sector", "N/A"),
-                "pris":       safe(info.get("currentPrice")),
-                "mktcap":     stor_tall(info.get("marketCap")),
-                "pe":         safe(info.get("trailingPE")),
-                "forward_pe": safe(info.get("forwardPE")),
-                "utbytte":    safe(info.get("dividendYield"), pst=True),
-                "roe":        safe(info.get("returnOnEquity"), pst=True),
+                "ticker":       t,
+                "navn":         info.get("longName", t),
+                "sektor":       info.get("sector", "N/A"),
+                "pris":         safe(info.get("currentPrice")),
+                "mktcap":       stor_tall(info.get("marketCap")),
+                "pe":           safe(info.get("trailingPE")),
+                "forward_pe":   safe(info.get("forwardPE")),
+                "utbytte":      safe(info.get("dividendYield"), pst=True),
+                "roe":          safe(info.get("returnOnEquity"), pst=True),
                 "bruttomargin": safe(info.get("grossMargins"), pst=True),
                 "driftsmargin": safe(info.get("operatingMargins"), pst=True),
-                "konsensus":  info.get("recommendationKey","N/A").upper(),
-                "mål":        safe(info.get("targetMeanPrice")),
-                "avk":        round(avk, 2),
+                "konsensus":    info.get("recommendationKey","N/A").upper(),
+                "mål":          safe(info.get("targetMeanPrice")),
+                "avk":          round(avk, 2),
                 "avk_perioder": avk_data,
-                "vol":        round(vol, 2),
-                "sharpe":     round(sharpe, 3),
-                "max_dd":     round(dd, 2),
-                "beta":       beta,
-                "historikk":  historikk,
+                "vol":          round(vol, 2),
+                "sharpe":       round(sharpe, 3),
+                "max_dd":       round(dd, 2),
+                "beta":         beta,
+                "historikk":    historikk,
             })
         except: pass
 
@@ -963,19 +967,19 @@ def api_sammenlign():
             for r in resultat
         ])
         prompt = f"""
-You are a stock analyst. Compare these stocks and give a structured assessment.
+You are a senior equity analyst. A client wants to allocate capital and is comparing these stocks. Give a decisive comparative analysis.
 
 STOCKS:
 {summary}
 
-Provide:
-1. Which stock has the best risk-adjusted return and why?
-2. Which is the most attractively valued (P/E, fundamentals)?
-3. Which has the best momentum?
-4. Which would you avoid and why?
-5. Ranking from best to worst investment right now with reasoning
+Your analysis must cover:
+1. **Best Risk-Adjusted Return** — which stock offers the best Sharpe ratio and why it matters
+2. **Best Value** — which is most attractively priced on fundamentals (P/E, sector context)
+3. **Best Momentum** — which has the strongest recent performance and technical setup
+4. **Avoid** — which stock you would not buy right now and the specific reason
+5. **Final Ranking** — rank all stocks from most to least attractive right now, with one sentence per stock
 
-Be specific and direct. Max 280 words.
+Be decisive. A client is making a real allocation decision. Max 300 words.
 """
         ai_tekst = spør_groq(prompt, groq_key, 1200)
 
@@ -1067,23 +1071,23 @@ def api_portefolje_analyse():
             for r in resultat if "feil" not in r
         ])
         prompt = f"""
-You are a portfolio manager. Analyze this portfolio and give concrete recommendations.
+You are a portfolio manager at a professional investment firm. Analyze this client portfolio and provide actionable recommendations.
 
-PORTFOLIO (total value: {round(total_verdi,2)}, total gain: {round(total_pst,2)}%):
+PORTFOLIO SUMMARY (total value: ${round(total_verdi,2):,.2f}, total return: {round(total_pst,2)}%):
 {pos_info}
 
-SECTOR BREAKDOWN: {json.dumps({k: round(v/total_verdi*100,1) for k,v in sektorer.items()})}
+SECTOR ALLOCATION: {json.dumps({k: f"{round(v/total_verdi*100,1)}%" for k,v in sektorer.items()})}
 
-Provide a thorough assessment:
-1. Overall portfolio quality — is it well diversified?
-2. Strongest position and why
-3. Weakest position — should it be sold or held?
-4. Sector concentration — too much in one sector?
-5. What is the portfolio missing? (sectors, geography, growth vs. value)
-6. Specific recommendations: INCREASE / HOLD / REDUCE / SELL for each position
-7. Overall risk rating (low/medium/high) with reasoning
+Provide a professional portfolio review:
+1. **Portfolio Health** — is this portfolio well-constructed? Comment on diversification, concentration risk, and overall quality
+2. **Top Performer** — the strongest position and whether to increase exposure
+3. **Weakest Link** — the position with the worst risk/reward and a specific recommendation (sell, reduce, or hold with reasoning)
+4. **Sector & Concentration Risk** — any dangerous overweights or missing sectors
+5. **Gaps** — what asset classes, sectors, or geographies are missing for a balanced portfolio
+6. **Position-by-Position** — for each holding: INCREASE / HOLD / REDUCE / EXIT with one-line reasoning
+7. **Risk Rating: LOW / MEDIUM / HIGH** — overall portfolio risk with explanation
 
-Be direct and action-oriented. Max 350 words.
+Be direct and action-oriented. This client needs clear guidance. Max 380 words.
 """
         ai_tekst = spør_groq(prompt, groq_key, 1500)
 
@@ -1134,17 +1138,17 @@ def api_nyheter():
         if groq_key and resultat:
             headlines = "\n".join([f"- {n['tittel']}" for n in resultat])
             prompt = f"""
-Analyze these news headlines for {ticker} and give a brief sentiment assessment.
+You are a financial news analyst. Assess the market sentiment for {ticker} based on these recent headlines.
 
-NEWS:
+HEADLINES:
 {headlines}
 
 Provide:
-1. Overall sentiment: POSITIVE / NEUTRAL / NEGATIVE
-2. What is the most important news and why?
-3. What does this mean for the stock price short-term? (1-2 sentences)
+1. **Sentiment: POSITIVE / NEUTRAL / NEGATIVE** — one word verdict
+2. **Key Story** — the single most market-moving headline and why it matters for the stock
+3. **Price Impact** — what this news flow suggests for near-term price action (be specific)
 
-Max 100 words. Be direct.
+Max 120 words. Focus on what actually moves the stock price.
 """
             ai_sentiment = spør_groq(prompt, groq_key, 400)
 
