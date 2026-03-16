@@ -18,23 +18,6 @@ warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
 
-# ── NaN-safe JSON ─────────────────────────────────────────────────────────────
-import json as _json
-class NaNSafeEncoder(_json.JSONEncoder):
-    def iterencode(self, o, _one_shot=False):
-        # Replace NaN/Inf with null before encoding
-        return super().iterencode(self._clean(o), _one_shot)
-    def _clean(self, obj):
-        if isinstance(obj, float):
-            if obj != obj or obj == float('inf') or obj == float('-inf'):
-                return None
-            return obj
-        if isinstance(obj, dict):
-            return {k: self._clean(v) for k, v in obj.items()}
-        if isinstance(obj, (list, tuple)):
-            return [self._clean(v) for v in obj]
-        return obj
-app.json_encoder = NaNSafeEncoder
 RISIKOFRI_RENTE = 0.045
 BENCHMARK       = "^GSPC"
 GROQ_API_KEY    = os.environ.get("GROQ_API_KEY", "")
@@ -52,8 +35,8 @@ MAKRO_TICKERS = {
 
 # ── Hjelpefunksjoner ──────────────────────────────────────────────────────────
 
+# Flask 3.x compatible NaN sanitizer — replaces NaN/Inf with None before jsonify
 def sanitize(obj):
-    """Recursively replace NaN/Inf with None so JSON stays valid."""
     if isinstance(obj, float):
         return None if (obj != obj or obj == float('inf') or obj == float('-inf')) else obj
     if isinstance(obj, dict):  return {k: sanitize(v) for k, v in obj.items()}
