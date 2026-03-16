@@ -545,7 +545,7 @@ def api_options_flow():
         total_call_oi,  total_put_oi  = 0, 0
         expirations_data = []
 
-        for exp in exps[:6]:
+        for exp in exps[:3]:
             try:
                 chain = aksje.option_chain(exp)
                 cv = chain.calls['volume'].fillna(0).sum()
