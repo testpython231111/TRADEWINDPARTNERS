@@ -742,17 +742,24 @@ Keep it professional, data-driven, and concise. Max 300 words.
 
 @app.route("/api/makro", methods=["GET"])
 def api_makro():
+    cached = cache_get("makro")
+    if cached:
+        return safe_jsonify(cached)
     rader = []
-    for navn, sym in MAKRO_TICKERS.items():
+    def fetch_one(item):
+        navn, sym = item
         try:
             df = yf.download(sym, period="5d", progress=False, auto_adjust=True)
-            if df.empty: continue
+            if df.empty: return {"navn":navn,"verdi":"N/A","endring":0}
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             siste   = float(df["Close"].iloc[-1])
             forrige = float(df["Close"].iloc[-2]) if len(df)>1 else siste
             endring = (siste-forrige)/forrige*100
-            rader.append({"navn":navn,"verdi":round(siste,2),"endring":round(endring,2)})
-        except: rader.append({"navn":navn,"verdi":"N/A","endring":0})
+            return {"navn":navn,"verdi":round(siste,2),"endring":round(endring,2)}
+        except: return {"navn":navn,"verdi":"N/A","endring":0}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        rader = list(ex.map(fetch_one, MAKRO_TICKERS.items()))
+    cache_set("makro", rader)
     return safe_jsonify(rader)
 
 @app.route("/api/earnings", methods=["POST"])
