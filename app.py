@@ -2,7 +2,7 @@
 Aksjeanalyse PRO — Flask Web App
 """
 
-import os, io, base64, warnings, json
+import os, io, base64, warnings, json, gc
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -214,7 +214,8 @@ def lag_graf(df: pd.DataFrame, ticker: str) -> str:
 
     buf = io.BytesIO()
     plt.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#06090F")
-    plt.close()
+    plt.close("all")
+    gc.collect()
     buf.seek(0)
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
 
