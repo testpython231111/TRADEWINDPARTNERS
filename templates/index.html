@@ -388,21 +388,14 @@
   .tab:hover { color: var(--text3); }
   .tab.active { color: var(--green); border-bottom-color: var(--green); }
   .tab-pane {
-    display: block;
+    display: none;
     padding: 14px;
-    opacity: 0;
-    visibility: hidden;
-    height: 0;
-    overflow: hidden;
-    pointer-events: none;
   }
   .tab-pane.active {
-    opacity: 0;
-    visibility: visible;
-    height: auto;
-    overflow: visible;
-    pointer-events: auto;
-    animation: fadeInPane 0.18s ease forwards;
+    display: block;
+  }
+  .tab-pane.active > * {
+    animation: fadeInPane 0.18s ease both;
   }
   @keyframes fadeInPane {
     from { opacity: 0; transform: translateY(5px); }
@@ -542,7 +535,7 @@
     .data-cell { background: white !important; border-bottom: 1px solid #eee; }
     .cell-label { color: #666 !important; }
     .cell-value { color: #111 !important; }
-    .tab-pane { opacity: 1 !important; visibility: visible !important; height: auto !important; overflow: visible !important; pointer-events: auto !important; }
+    .tab-pane { display: block !important; }
     #pane-teknisk, #pane-fundamental, #pane-risiko,
     #pane-earnings, #pane-analyst, #pane-insider { display: block !important; }
     .pos { color: #006600 !important; }
