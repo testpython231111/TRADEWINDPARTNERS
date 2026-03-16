@@ -26,7 +26,7 @@ MAKRO_TICKERS = {
     "VIX":           "^VIX",
     "US 10y Yield":  "^TNX",
     "Gold":          "GC=F",
-    "Brent Crude":   "BZ=F",
+    "Oil (Brent)":  "BZ=F",
     "EUR/USD":       "EURUSD=X",
     "USD/NOK":       "USDNOK=X",
 }
