@@ -89,7 +89,7 @@ def spør_groq(prompt: str, api_key: str, maks=1200) -> str:
     try:
         genai.configure(api_key=key)
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-2.0-flash-lite",
             generation_config=genai.types.GenerationConfig(max_output_tokens=maks),
         )
         svar = model.generate_content(prompt)
