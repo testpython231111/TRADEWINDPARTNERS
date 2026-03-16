@@ -3,44 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>STOCK ANALYSIS PRO</title>
+<title>Trade Wind Partners — Stock Analysis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://s3.tradingview.com/tv.js" id="tv-script" async></script>
 <style>
   :root {
-    --bg:       #050a05;
-    --bg2:      #0a0f0a;
-    --bg3:      #0f1a0f;
-    --border:   #1a2e1a;
-    --green:    #00ff88;
-    --green2:   #00cc66;
-    --red:      #ff3366;
-    --yellow:   #ffd166;
-    --blue:     #00b4d8;
-    --text:     #8aac8a;
-    --text2:    #5a7a5a;
-    --text3:    #c8e6c8;
-    --white:    #e8f5e8;
+    --bg:       #06090F;
+    --bg2:      #0A1220;
+    --bg3:      #0F1B2E;
+    --border:   #1A2D45;
+    --green:    #4A9ED6;
+    --green2:   #2D7AB8;
+    --red:      #E05470;
+    --yellow:   #F0B429;
+    --blue:     #64B5F6;
+    --text:     #7A92B0;
+    --text2:    #4A6580;
+    --text3:    #B8CEDE;
+    --white:    #E8F0F8;
   }
 
   [data-theme="light"] {
-    --bg:       #f4f7f4;
-    --bg2:      #ffffff;
-    --bg3:      #e8f0e8;
-    --border:   #c8d8c8;
-    --green:    #007a40;
-    --green2:   #009950;
-    --red:      #cc1144;
-    --yellow:   #b8860b;
-    --blue:     #0077aa;
-    --text:     #2a4a2a;
-    --text2:    #5a7a5a;
-    --text3:    #1a2e1a;
-    --white:    #0a0f0a;
+    --bg:       #F0F4FA;
+    --bg2:      #FFFFFF;
+    --bg3:      #E4ECF5;
+    --border:   #C0CDDE;
+    --green:    #1A5FA8;
+    --green2:   #2D7AB8;
+    --red:      #CC2244;
+    --yellow:   #B87800;
+    --blue:     #1565C0;
+    --text:     #2A4060;
+    --text2:    #5A7090;
+    --text3:    #1A2D45;
+    --white:    #06090F;
   }
   [data-theme="light"] body::before { display: none; }
   [data-theme="light"] .topbar { border-bottom: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  [data-theme="light"] .topbar-logo img { filter: none !important; }
 
   * { margin:0; padding:0; box-sizing:border-box; }
 
@@ -59,7 +60,7 @@
     position: fixed; inset: 0; z-index: 0; pointer-events: none;
     background: repeating-linear-gradient(
       0deg, transparent, transparent 2px,
-      rgba(0,255,136,0.012) 2px, rgba(0,255,136,0.012) 4px
+      rgba(45,122,184,0.012) 2px, rgba(45,122,184,0.012) 4px
     );
   }
 
@@ -485,7 +486,9 @@
   <div class="hamburger" id="hamburger" onclick="toggleSidebar()">
     <span></span><span></span><span></span>
   </div>
-  <div class="topbar-logo">STOCK<span>ANALYSIS</span> PRO</div>
+  <div class="topbar-logo">
+    <img src="data:image/png;base64,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" alt="Trade Wind Partners" style="height:28px;width:auto;display:block;filter:brightness(0) invert(1);" />
+  </div>
   <div class="ticker-bar" id="tickerBar">
     <div class="ticker-item"><span style="color:var(--text2)">LOADING...</span></div>
   </div>
