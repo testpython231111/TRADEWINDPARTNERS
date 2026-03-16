@@ -3,6 +3,7 @@ Aksjeanalyse PRO — Flask Web App
 """
 
 import os, io, base64, warnings, json
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -231,7 +232,7 @@ def api_analyse():
     groq_key = os.environ.get("GROQ_API_KEY", data.get("groq_key",""))
 
     if not ticker:
-        return jsonify({"error": "Ingen ticker angitt"}), 400
+        return jsonify({"error": "No ticker provided"}), 400
 
     try:
         aksje = yf.Ticker(ticker)
@@ -246,13 +247,12 @@ def api_analyse():
 
     # Benchmark
     bm_df = df.copy()
-    for bm in [BENCHMARK, "^GSPC"]:
-        try:
-            _bm = yf.download(bm, period=periode, progress=False, auto_adjust=True)
-            if not _bm.empty:
-                if isinstance(_bm.columns, pd.MultiIndex): _bm.columns = _bm.columns.get_level_values(0)
-                bm_df = _bm; break
-        except: pass
+    try:
+        _bm = yf.download(BENCHMARK, period=periode, progress=False, auto_adjust=True)
+        if not _bm.empty:
+            if isinstance(_bm.columns, pd.MultiIndex): _bm.columns = _bm.columns.get_level_values(0)
+            bm_df = _bm
+    except: pass
 
     df  = beregn_tekniske(df)
     sig = hent_signaler(df)
@@ -328,13 +328,12 @@ def api_ai_analyse():
         sig  = hent_signaler(df)
 
         bm_df = df.copy()
-        for bm in [BENCHMARK, "^GSPC"]:
-            try:
-                _bm = yf.download(bm, period=periode, progress=False, auto_adjust=True)
-                if not _bm.empty:
-                    if isinstance(_bm.columns, pd.MultiIndex): _bm.columns = _bm.columns.get_level_values(0)
-                    bm_df = _bm; break
-            except: pass
+        try:
+            _bm = yf.download(BENCHMARK, period=periode, progress=False, auto_adjust=True)
+            if not _bm.empty:
+                if isinstance(_bm.columns, pd.MultiIndex): _bm.columns = _bm.columns.get_level_values(0)
+                bm_df = _bm
+        except: pass
         ri = beregn_risiko(df, bm_df)
 
         fundamental = {
@@ -1113,15 +1112,14 @@ def api_nyheter():
             try:
                 # yfinance news structure
                 content = n.get("content", {})
-                tittel  = content.get("title") or n.get("title","Uten tittel")
+                tittel  = content.get("title") or n.get("title","No title")
                 kilde   = content.get("provider", {}).get("displayName","") or n.get("publisher","")
                 lenke   = content.get("canonicalUrl", {}).get("url","") or n.get("link","")
                 ts      = content.get("pubDate") or ""
                 # Parse dato
                 if ts:
                     try:
-                        from datetime import datetime
-                        dato = datetime.strptime(ts[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+                        dato = datetime.strptime(ts[:10], "%Y-%m-%d").strftime("%d %b %Y")
                     except:
                         dato = ts[:10]
                 else:
@@ -1163,27 +1161,50 @@ def api_watchlist_kurs():
         try:
             aksje = yf.Ticker(t)
             info  = aksje.info
-            df    = yf.download(t, period="5d", progress=False, auto_adjust=True)
+            # Fetch 1y of data — covers all periods we need
+            df = yf.download(t, period="1y", progress=False, auto_adjust=True)
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             if df.empty:
                 resultat.append({"ticker": t, "feil": "No data"})
                 continue
-            last    = float(df["Close"].iloc[-1])
-            prev    = float(df["Close"].iloc[-2]) if len(df) > 1 else last
-            change  = (last - prev) / prev * 100
-            df52 = yf.download(t, period="1y", progress=False, auto_adjust=True)
-            if isinstance(df52.columns, pd.MultiIndex): df52.columns = df52.columns.get_level_values(0)
-            high52    = float(df52["Close"].max()) if not df52.empty else last
-            low52     = float(df52["Close"].min()) if not df52.empty else last
-            sparkline = [round(float(p), 2) for p in df52["Close"].iloc[-30:]] if not df52.empty else []
+
+            last = float(df["Close"].iloc[-1])
+            prev = float(df["Close"].iloc[-2]) if len(df) > 1 else last
+
+            def pct(n):
+                try:
+                    p = float(df["Close"].iloc[-n])
+                    return round((last - p) / p * 100, 2)
+                except: return None
+
+            # 1W ≈ 5 trading days, 1M ≈ 21, 3M ≈ 63
+            change_1d = round((last - prev) / prev * 100, 2)
+            change_1w = pct(5)
+            change_1m = pct(21)
+            change_3m = pct(63)
+
+            # YTD — first trading day of the year
+            try:
+                year_start = df[df.index.year == df.index[-1].year].iloc[0]
+                ytd = round((last - float(year_start["Close"])) / float(year_start["Close"]) * 100, 2)
+            except: ytd = None
+
+            high52 = round(float(df["Close"].max()), 2)
+            low52  = round(float(df["Close"].min()), 2)
+            sparkline = [round(float(p), 2) for p in df["Close"].iloc[-30:]]
+
             resultat.append({
                 "ticker":    t,
                 "navn":      info.get("longName", t),
                 "sektor":    info.get("sector", "N/A"),
                 "pris":      round(last, 2),
-                "endring":   round(change, 2),
-                "høy52":     round(high52, 2),
-                "lav52":     round(low52, 2),
+                "endring":   change_1d,
+                "uke":       change_1w,
+                "maaned":    change_1m,
+                "tre_mnd":   change_3m,
+                "ytd":       ytd,
+                "høy52":     high52,
+                "lav52":     low52,
                 "mktcap":    stor_tall(info.get("marketCap")),
                 "pe":        safe(info.get("trailingPE")),
                 "konsensus": info.get("recommendationKey", "N/A").upper(),
