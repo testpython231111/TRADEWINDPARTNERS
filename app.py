@@ -745,18 +745,25 @@ def api_makro():
     cached = cache_get("makro")
     if cached:
         return safe_jsonify(cached)
-    rader = []
     def fetch_one(item):
         navn, sym = item
         try:
-            df = yf.download(sym, period="5d", progress=False, auto_adjust=True)
-            if df.empty: return {"navn":navn,"verdi":"N/A","endring":0}
-            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-            siste   = float(df["Close"].iloc[-1])
-            forrige = float(df["Close"].iloc[-2]) if len(df)>1 else siste
-            endring = (siste-forrige)/forrige*100
-            return {"navn":navn,"verdi":round(siste,2),"endring":round(endring,2)}
-        except: return {"navn":navn,"verdi":"N/A","endring":0}
+            t = yf.Ticker(sym)
+            fi = t.fast_info
+            siste   = float(fi.last_price)
+            forrige = float(fi.previous_close) if fi.previous_close else siste
+            if not forrige or forrige == 0: forrige = siste
+            endring = (siste - forrige) / forrige * 100
+            # Format value nicely
+            if siste >= 1000:
+                verdi = f"{siste:,.2f}"
+            elif siste >= 1:
+                verdi = f"{siste:.2f}"
+            else:
+                verdi = f"{siste:.4f}"
+            return {"navn": navn, "verdi": verdi, "endring": round(endring, 2)}
+        except Exception as e:
+            return {"navn": navn, "verdi": "N/A", "endring": 0}
     with ThreadPoolExecutor(max_workers=8) as ex:
         rader = list(ex.map(fetch_one, MAKRO_TICKERS.items()))
     cache_set("makro", rader)
