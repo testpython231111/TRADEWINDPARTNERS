@@ -1057,7 +1057,7 @@ window.addEventListener("load", () => {
   const lagretPf = localStorage.getItem("portefolje");
   if (lagretPf) { portefolje = JSON.parse(lagretPf); visPortefolje(); }
   // Delay macro fetch so page renders immediately
-  setTimeout(lastMakro, 1500);
+  setTimeout(lastMakro, 3000);
   // Dismiss splash after 2.2s
   setTimeout(() => {
     const splash = document.getElementById("splash");
@@ -1644,7 +1644,7 @@ async function lastMakro() {
 }
 
 // Oppdater makro hvert 60 sek
-setInterval(lastMakro, 60000);
+setInterval(lastMakro, 300000); // poll every 5 minutes
 
 // ── Click on topbar ticker to analyze it ─────────────────────────────────────
 function analyserMakro(ticker) {
