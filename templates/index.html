@@ -853,7 +853,7 @@
         <div class="panel-header">
           <span class="panel-title">💼 PORTFOLIO TRACKER</span>
           <button class="btn" onclick="analyserPortefolje()" style="width:auto;padding:4px 14px;font-size:10px">
-            ⬡ AI ANALYZE PORTFOLIO
+            ▶ AI ANALYZE PORTFOLIO
           </button>
         </div>
         <div class="panel-body">
@@ -889,13 +889,13 @@
             No positions added yet.
           </div>
         </div>
-        <div id="pfSummary" style="display:none; padding:12px 14px; border-top:1px solid var(--border); display:flex; gap:24px; flex-wrap:wrap"></div>
+        <div id="pfSummary" style="display:none; padding:12px 14px; border-top:1px solid var(--border); gap:24px; flex-wrap:wrap"></div>
       </div>
 
       <!-- AI-analyse -->
       <div class="panel" id="pfAIPanel" style="display:none">
         <div class="panel-header">
-          <span class="panel-title" style="color:var(--yellow)">⬡ AI PORTFOLIO ANALYSIS</span>
+          <span class="panel-title" style="color:var(--yellow)">AI PORTFOLIO ANALYSIS</span>
         </div>
         <div class="panel-body">
           <div id="pfAITekst" class="ai-text"></div>
@@ -936,12 +936,12 @@
         </div>
         <div class="panel-body">
           <div style="font-size:10px;color:var(--text2);margin-bottom:10px">
-            Based on sector ETFs (1-day performance). Click a sector to compare top holdings.
+            S&P 500 sectors via ETFs. Select a time period above, then click any sector to see top holdings.
           </div>
           <div id="sektorGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
-            <div style="color:var(--text2);font-size:11px;padding:20px;text-align:center;grid-column:1/-1">
-              Click ↻ REFRESH to load sector data
-            </div>
+              <div style="color:var(--text2);font-size:11px;padding:20px;text-align:center;grid-column:1/-1">
+                Loading sector data...
+              </div>
           </div>
         </div>
       </div>
@@ -1129,7 +1129,7 @@ function signalBull(ok, tekst) {
 }
 
 // ── Run analysis ──────────────────────────────────────────────────────────────
-async function kjørAnalyse(medAI) {
+async function kjørAnalyse() {
   const ticker  = document.getElementById("tickerInput").value.trim().toUpperCase();
   const periode = document.getElementById("periodeSelect").value;
   const groqKey = "";
@@ -1161,7 +1161,7 @@ async function kjørAnalyse(medAI) {
 
   } catch(e) {
     skjulLoader();
-    alert("Nettverksfeil: " + e.message);
+    alert("Network error: " + e.message);
   }
 }
 
@@ -1188,7 +1188,7 @@ async function lastAI(ticker, periode) {
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\n/g, "<br>");
     aiPane.innerHTML = `<div style="padding:14px">
-      <div style="margin-bottom:8px; font-size:9px; color:var(--green2); letter-spacing:2px">⬡ GROQ LLAMA 3.3 70B — INVESTMENT ANALYSIS</div>
+      <div style="margin-bottom:8px; font-size:9px; color:var(--green2); letter-spacing:2px">AI ANALYSIS — GROQ LLAMA 3.3 70B</div>
       <div class="ai-text">${html}</div>
       <div style="margin-top:12px" class="alert alert-info">⚠ This is not financial advice. Always do your own research.</div>
     </div>`;
@@ -1594,7 +1594,7 @@ async function kjørSammenlign() {
       </div>
 
       <div style="margin-bottom:16px">
-        <div style="font-size:10px; color:var(--text2); letter-spacing:2px; margin-bottom:8px">FUNDAMENTAL COMPAREING</div>
+        <div style="font-size:10px; color:var(--text2); letter-spacing:2px; margin-bottom:8px">FUNDAMENTAL COMPARISON</div>
         <div style="overflow-x:auto">
           <table class="data-table" style="min-width:800px">
             <thead><tr>
@@ -1614,7 +1614,7 @@ async function kjørSammenlign() {
 
       ${data.ai ? `
         <div style="margin-top:16px; padding:14px; background:var(--bg3); border:1px solid rgba(255,209,102,0.2)">
-          <div style="font-size:9px; color:var(--yellow); letter-spacing:2px; margin-bottom:10px">⬡ AI COMPAREING</div>
+          <div style="font-size:9px; color:var(--yellow); letter-spacing:2px; margin-bottom:10px">⬡ AI COMPARISON</div>
           <div class="ai-text">${data.ai.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}</div>
         </div>` : ''}
     `;
@@ -2155,7 +2155,7 @@ async function lastNyheter(ticker) {
     document.getElementById("pane-nyheter").innerHTML = `
       ${data.ai_sentiment ? `
         <div style="margin-bottom:12px;padding:10px 12px;background:var(--bg3);border-left:3px solid ${sentimentFarge}">
-          <div style="font-size:9px;color:var(--yellow);letter-spacing:2px;margin-bottom:6px">⬡ AI SENTIMENT ANALYSIS</div>
+          <div style="font-size:9px;color:var(--yellow);letter-spacing:2px;margin-bottom:6px">AI SENTIMENT ANALYSIS</div>
           <div class="ai-text" style="font-size:12px">${data.ai_sentiment.replace(/\n/g,'<br>')}</div>
         </div>` : ''}
       <div>
@@ -2202,7 +2202,7 @@ function fjernFraWatchlist(ticker) {
 function analyserFraWatchlist(ticker) {
   document.getElementById("tickerInput").value = ticker;
   visView("analyse");
-  kjørAnalyse(false);
+  kjørAnalyse(true);
 }
 
 function tegnWatchlist() {
@@ -2501,7 +2501,7 @@ function visSektorDetalj(navn, holdings) {
 
 document.addEventListener("DOMContentLoaded", () => {
   const safe = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener("keydown", fn); };
-  safe("tickerInput", e => { if (e.key === "Enter") kjørAnalyse(false); });
+  safe("tickerInput", e => { if (e.key === "Enter") kjørAnalyse(true); });
   safe("wlInput",     e => { if (e.key === "Enter") leggTilWatchlist(); });
   safe("pfTicker",    e => { if (e.key === "Enter") document.getElementById("pfAntall")?.focus(); });
   safe("pfAntall",    e => { if (e.key === "Enter") document.getElementById("pfPris")?.focus(); });
