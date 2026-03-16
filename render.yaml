@@ -3,7 +3,7 @@ services:
     name: aksjeanalyse-pro
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --max-requests 100 --max-requests-jitter 20
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120 --max-requests 500 --max-requests-jitter 50 --preload
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
