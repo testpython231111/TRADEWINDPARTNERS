@@ -87,12 +87,13 @@ def spør_groq(prompt: str, api_key: str, maks=1200) -> str:
     key = api_key or GEMINI_API_KEY
     if not key: return "No Gemini API key provided."
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
+        url = "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent"
+        headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": maks, "temperature": 0.7}
         }
-        r = _requests.post(url, json=payload, timeout=60)
+        r = _requests.post(url, json=payload, headers=headers, timeout=60)
         r.raise_for_status()
         return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
