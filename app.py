@@ -148,13 +148,13 @@ def beregn_risiko(df, bm_df):
 
 def lag_graf(df: pd.DataFrame, ticker: str) -> str:
     plt.style.use("dark_background")
-    fig = plt.figure(figsize=(16, 12), facecolor="#0a0f0a")
+    fig = plt.figure(figsize=(16, 12), facecolor="#06090F")
     gs  = gridspec.GridSpec(4, 2, figure=fig, hspace=0.5, wspace=0.3)
-    C   = {"kurs":"#00ff88","sma20":"#ffd166","sma50":"#00b4d8",
-           "sma200":"#ef476f","bull":"#00ff88","bear":"#ef476f","text":"#8a9e8a"}
+    C   = {"kurs":"#4A9ED6","sma20":"#F0B429","sma50":"#64B5F6",
+           "sma200":"#E05470","bull":"#4A9ED6","bear":"#E05470","text":"#7A92B0"}
 
     ax1 = fig.add_subplot(gs[0,:])
-    ax1.set_facecolor("#0a0f0a")
+    ax1.set_facecolor("#06090F")
     ax1.plot(df.index, df["Close"],  color=C["kurs"],  lw=1.5, label="Kurs")
     ax1.plot(df.index, df["SMA20"],  color=C["sma20"], lw=0.8, ls="--", label="SMA20")
     ax1.plot(df.index, df["SMA50"],  color=C["sma50"], lw=0.8, ls="--", label="SMA50")
@@ -163,57 +163,57 @@ def lag_graf(df: pd.DataFrame, ticker: str) -> str:
                      alpha=0.05, color=C["kurs"])
     ax1.set_title(f"{ticker} — Kurs & Indikatorer", color=C["text"], fontsize=10)
     ax1.legend(fontsize=7, labelcolor=C["text"])
-    ax1.tick_params(colors=C["text"]); ax1.spines[:].set_color("#1a2e1a")
+    ax1.tick_params(colors=C["text"]); ax1.spines[:].set_color("#1A2D45")
 
     ax2 = fig.add_subplot(gs[1,:])
-    ax2.set_facecolor("#0a0f0a")
+    ax2.set_facecolor("#06090F")
     fc = [C["bull"] if df["Close"].iloc[i]>=df["Close"].iloc[i-1] else C["bear"]
           for i in range(1,len(df))]
     ax2.bar(df.index[1:], df["Volume"].iloc[1:], color=fc, alpha=0.6, width=1)
     ax2.plot(df.index, df["Vol_SMA20"], color=C["sma20"], lw=0.8, ls="--")
     ax2.set_title("Volume", color=C["text"], fontsize=10)
-    ax2.tick_params(colors=C["text"]); ax2.spines[:].set_color("#1a2e1a")
+    ax2.tick_params(colors=C["text"]); ax2.spines[:].set_color("#1A2D45")
 
     ax3 = fig.add_subplot(gs[2,0])
-    ax3.set_facecolor("#0a0f0a")
+    ax3.set_facecolor("#06090F")
     ax3.plot(df.index, df["RSI"], color="#f4a261", lw=1.2)
     ax3.axhline(70, color=C["bear"], ls="--", lw=0.7, alpha=0.6)
     ax3.axhline(30, color=C["bull"], ls="--", lw=0.7, alpha=0.6)
     ax3.fill_between(df.index, df["RSI"], 70, where=df["RSI"]>=70, alpha=0.1, color=C["bear"])
     ax3.fill_between(df.index, df["RSI"], 30, where=df["RSI"]<=30, alpha=0.1, color=C["bull"])
     ax3.set_ylim(0,100); ax3.set_title("RSI (14d)", color=C["text"], fontsize=10)
-    ax3.tick_params(colors=C["text"]); ax3.spines[:].set_color("#1a2e1a")
+    ax3.tick_params(colors=C["text"]); ax3.spines[:].set_color("#1A2D45")
 
     ax4 = fig.add_subplot(gs[2,1])
-    ax4.set_facecolor("#0a0f0a")
+    ax4.set_facecolor("#06090F")
     ax4.plot(df.index, df["MACD"],   color=C["sma50"], lw=1.2, label="MACD")
     ax4.plot(df.index, df["MACD_S"], color=C["sma20"], lw=1.0, ls="--", label="Signal")
     hc = [C["bull"] if v>=0 else C["bear"] for v in df["MACD_H"]]
     ax4.bar(df.index, df["MACD_H"], color=hc, alpha=0.5, width=1)
     ax4.set_title("MACD", color=C["text"], fontsize=10)
     ax4.legend(fontsize=7, labelcolor=C["text"])
-    ax4.tick_params(colors=C["text"]); ax4.spines[:].set_color("#1a2e1a")
+    ax4.tick_params(colors=C["text"]); ax4.spines[:].set_color("#1A2D45")
 
     ax5 = fig.add_subplot(gs[3,0])
-    ax5.set_facecolor("#0a0f0a")
+    ax5.set_facecolor("#06090F")
     rm = df["Close"].cummax()
     dd = (df["Close"]-rm)/rm*100
     ax5.fill_between(df.index, dd, 0, color=C["bear"], alpha=0.5)
     ax5.plot(df.index, dd, color=C["bear"], lw=0.8)
     ax5.set_title("Drawdown (%)", color=C["text"], fontsize=10)
-    ax5.tick_params(colors=C["text"]); ax5.spines[:].set_color("#1a2e1a")
+    ax5.tick_params(colors=C["text"]); ax5.spines[:].set_color("#1A2D45")
 
     ax6 = fig.add_subplot(gs[3,1])
-    ax6.set_facecolor("#0a0f0a")
+    ax6.set_facecolor("#06090F")
     dagret = df["Close"].pct_change().dropna()*100
     ax6.hist(dagret, bins=50, color=C["sma50"], alpha=0.6, edgecolor="none")
     ax6.axvline(dagret.mean(), color=C["sma20"], lw=1.2, ls="--")
     ax6.axvline(np.percentile(dagret,5), color=C["bear"], lw=1.0, ls=":")
     ax6.set_title("Return Distribution", color=C["text"], fontsize=10)
-    ax6.tick_params(colors=C["text"]); ax6.spines[:].set_color("#1a2e1a")
+    ax6.tick_params(colors=C["text"]); ax6.spines[:].set_color("#1A2D45")
 
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#0a0f0a")
+    plt.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#06090F")
     plt.close()
     buf.seek(0)
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
