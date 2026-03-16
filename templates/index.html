@@ -680,6 +680,8 @@
             <div class="tab" onclick="byttTab('earnings')" id="earningsTab">EARNINGS</div>
             <div class="tab" onclick="byttTab('analyst')" id="analystTab">ANALYSTS</div>
             <div class="tab" onclick="byttTab('insider')" id="insiderTab">INSIDER</div>
+            <div class="tab" onclick="byttTab('short')" id="shortTab">SHORT</div>
+            <div class="tab" onclick="byttTab('options')" id="optionsTab">OPTIONS</div>
             <div class="tab" onclick="byttTab('ai')" id="aiTab">AI ANALYSIS</div>
           </div>
           <div class="tab-pane active" id="pane-teknisk"></div>
@@ -706,6 +708,8 @@
           <div class="tab-pane" id="pane-earnings"></div>
           <div class="tab-pane" id="pane-analyst"></div>
           <div class="tab-pane" id="pane-insider"></div>
+          <div class="tab-pane" id="pane-short"></div>
+          <div class="tab-pane" id="pane-options"></div>
           <div class="tab-pane" id="pane-ai"></div>
         </div>
 
@@ -1314,6 +1318,16 @@ function visResultat(d) {
     `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching insider transactions...</div>`;
   lastInsider(d.ticker);
 
+  // ── Short Interest ──
+  document.getElementById("pane-short").innerHTML =
+    `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching short interest data...</div>`;
+  lastShort(d.ticker);
+
+  // ── Options Flow ──
+  document.getElementById("pane-options").innerHTML =
+    `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching options flow...</div>`;
+  lastOptions(d.ticker);
+
   // ── AI — loaded async by lastAI(), just set placeholder ──
   document.getElementById("pane-ai").innerHTML = `
     <div style="padding:14px;color:var(--green2);font-size:11px">
@@ -1812,6 +1826,187 @@ async function lastInsider(ticker) {
   } catch(e) {
     document.getElementById("pane-insider").innerHTML =
       `<div class="alert alert-error" style="margin:10px">Could not load insider data: ${e.message}</div>`;
+  }
+}
+
+async function lastShort(ticker) {
+  try {
+    const res = await fetch("/api/short_interest", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ticker})
+    });
+    const d = await res.json();
+    if (d.error) {
+      document.getElementById("pane-short").innerHTML =
+        `<div class="alert alert-info" style="margin:14px">${d.error}</div>`; return;
+    }
+
+    const momHtml = d.momChange !== null && d.momChange !== undefined
+      ? `<span style="color:${d.momChange>0?'var(--red)':'var(--green)'}">
+           ${d.momChange>0?'▲':'▼'} ${Math.abs(d.momChange)}% vs prior month
+         </span>` : "—";
+
+    document.getElementById("pane-short").innerHTML = `
+      <div style="padding:14px">
+        <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:16px">SHORT INTEREST</div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1px;background:var(--border);margin-bottom:20px">
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">SHORT % OF FLOAT</div>
+            <div style="font-size:22px;font-weight:500;color:${d.sentimentColor}">${d.shortPct !== null ? d.shortPct+'%' : 'N/A'}</div>
+            <div style="font-size:10px;color:${d.sentimentColor};margin-top:4px;letter-spacing:1px">${d.sentiment}</div>
+          </div>
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">DAYS TO COVER</div>
+            <div style="font-size:22px;font-weight:500;color:var(--text3)">${d.shortRatio !== null ? d.shortRatio : 'N/A'}</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:4px">SHORT RATIO</div>
+          </div>
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">SHARES SHORT</div>
+            <div style="font-size:22px;font-weight:500;color:var(--text3)">${d.sharesShort}</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:4px">${momHtml}</div>
+          </div>
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">FLOAT SHARES</div>
+            <div style="font-size:22px;font-weight:500;color:var(--text3)">${d.floatShares}</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:4px">AS OF ${d.dateShort}</div>
+          </div>
+        </div>
+
+        <div style="background:var(--bg3);border:1px solid var(--border);padding:12px 14px;font-size:11px;color:var(--text2);line-height:1.8">
+          <strong style="color:var(--text3)">How to read this:</strong><br>
+          <span style="color:var(--green)">LOW (&lt;5%)</span> — Few short sellers, low bearish pressure.
+          <span style="color:var(--yellow)">MODERATE (5–10%)</span> — Normal short activity.
+          <span style="color:var(--red)">ELEVATED (&gt;10%)</span> — High conviction by short sellers, or high squeeze potential.<br>
+          <strong>Days to cover</strong> = shares short ÷ avg daily volume. Higher = harder to exit shorts quickly = more squeeze risk.
+        </div>
+      </div>`;
+  } catch(e) {
+    document.getElementById("pane-short").innerHTML =
+      `<div class="alert alert-error" style="margin:10px">Could not load short data: ${e.message}</div>`;
+  }
+}
+
+async function lastOptions(ticker) {
+  try {
+    const res = await fetch("/api/options_flow", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ticker})
+    });
+    const d = await res.json();
+    if (d.error) {
+      document.getElementById("pane-options").innerHTML =
+        `<div class="alert alert-info" style="margin:14px">${d.error}</div>`; return;
+    }
+
+    const expRows = (d.expirations||[]).map(e => {
+      const pcCol = e.pcVol > 1.2 ? "var(--red)" : e.pcVol < 0.7 ? "var(--green)" : "var(--yellow)";
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:7px 10px;color:var(--text2)">${e.exp}</td>
+        <td style="padding:7px 10px;color:var(--green);text-align:right">${e.callVol.toLocaleString()}</td>
+        <td style="padding:7px 10px;color:var(--red);text-align:right">${e.putVol.toLocaleString()}</td>
+        <td style="padding:7px 10px;color:var(--green);text-align:right">${e.callOI.toLocaleString()}</td>
+        <td style="padding:7px 10px;color:var(--red);text-align:right">${e.putOI.toLocaleString()}</td>
+        <td style="padding:7px 10px;color:${pcCol};text-align:right;font-weight:500">${e.pcVol}</td>
+      </tr>`;
+    }).join("");
+
+    const callRows = (d.topCalls||[]).map(c =>
+      `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px;color:var(--green)">$${c.strike}</td>
+        <td style="padding:6px 10px;color:var(--text3);text-align:right">${c.oi.toLocaleString()}</td>
+        <td style="padding:6px 10px;color:var(--text2);text-align:right">${c.vol.toLocaleString()}</td>
+        <td style="padding:6px 10px;color:var(--text2);text-align:right">${c.iv !== null ? c.iv+'%' : '—'}</td>
+      </tr>`).join("");
+
+    const putRows = (d.topPuts||[]).map(p =>
+      `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 10px;color:var(--red)">$${p.strike}</td>
+        <td style="padding:6px 10px;color:var(--text3);text-align:right">${p.oi.toLocaleString()}</td>
+        <td style="padding:6px 10px;color:var(--text2);text-align:right">${p.vol.toLocaleString()}</td>
+        <td style="padding:6px 10px;color:var(--text2);text-align:right">${p.iv !== null ? p.iv+'%' : '—'}</td>
+      </tr>`).join("");
+
+    document.getElementById("pane-options").innerHTML = `
+      <div style="padding:14px">
+
+        <!-- Summary bar -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--border);margin-bottom:20px">
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">FLOW SENTIMENT</div>
+            <div style="font-size:16px;font-weight:600;color:${d.sentimentColor};letter-spacing:1px">${d.sentiment}</div>
+            <div style="font-size:9px;color:var(--text2);margin-top:4px">PUT/CALL VOLUME</div>
+          </div>
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">P/C VOLUME RATIO</div>
+            <div style="font-size:22px;font-weight:500;color:var(--text3)">${d.pcVolumeRatio}</div>
+            <div style="font-size:9px;color:var(--text2);margin-top:4px">&lt;0.8 BULLISH · &gt;1.2 BEARISH</div>
+          </div>
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">P/C OI RATIO</div>
+            <div style="font-size:22px;font-weight:500;color:var(--text3)">${d.pcOIRatio}</div>
+            <div style="font-size:9px;color:var(--text2);margin-top:4px">OPEN INTEREST</div>
+          </div>
+          <div style="background:var(--bg2);padding:14px 12px">
+            <div style="font-size:9px;color:var(--text2);margin-bottom:6px">ATM IMPLIED VOL</div>
+            <div style="font-size:22px;font-weight:500;color:var(--yellow)">${d.atmIV !== null ? d.atmIV+'%' : 'N/A'}</div>
+            <div style="font-size:9px;color:var(--text2);margin-top:4px">NEAREST EXPIRY</div>
+          </div>
+        </div>
+
+        <!-- Expiration breakdown -->
+        <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:8px">FLOW BY EXPIRATION</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px">
+          <thead><tr style="border-bottom:1px solid var(--border)">
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:left">EXPIRY</th>
+            <th style="padding:6px 10px;color:var(--green);font-weight:400;text-align:right">CALL VOL</th>
+            <th style="padding:6px 10px;color:var(--red);font-weight:400;text-align:right">PUT VOL</th>
+            <th style="padding:6px 10px;color:var(--green);font-weight:400;text-align:right">CALL OI</th>
+            <th style="padding:6px 10px;color:var(--red);font-weight:400;text-align:right">PUT OI</th>
+            <th style="padding:6px 10px;color:var(--text2);font-weight:400;text-align:right">P/C VOL</th>
+          </tr></thead>
+          <tbody>${expRows}</tbody>
+        </table>
+
+        <!-- Top strikes -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:9px;color:var(--green);letter-spacing:2px;margin-bottom:8px">TOP CALL STRIKES (${d.nearestExp})</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="border-bottom:1px solid var(--border)">
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:left">STRIKE</th>
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:right">OI</th>
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:right">VOL</th>
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:right">IV</th>
+              </tr></thead>
+              <tbody>${callRows}</tbody>
+            </table>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--red);letter-spacing:2px;margin-bottom:8px">TOP PUT STRIKES (${d.nearestExp})</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="border-bottom:1px solid var(--border)">
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:left">STRIKE</th>
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:right">OI</th>
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:right">VOL</th>
+                <th style="padding:5px 10px;color:var(--text2);font-weight:400;text-align:right">IV</th>
+              </tr></thead>
+              <tbody>${putRows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;background:var(--bg3);border:1px solid var(--border);padding:12px 14px;font-size:11px;color:var(--text2);line-height:1.8">
+          <strong style="color:var(--text3)">How to read this:</strong><br>
+          <strong>P/C ratio &lt; 0.8</strong> = options traders are positioned bullishly (more calls than puts).
+          <strong>P/C ratio &gt; 1.2</strong> = bearish positioning or hedging.
+          <strong>High OI at a strike</strong> = strong support/resistance level ("max pain" zone).
+          <strong>ATM IV</strong> = market's implied expectation of near-term price swings.
+        </div>
+      </div>`;
+  } catch(e) {
+    document.getElementById("pane-options").innerHTML =
+      `<div class="alert alert-error" style="margin:10px">Could not load options data: ${e.message}</div>`;
   }
 }
 
