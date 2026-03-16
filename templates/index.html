@@ -1244,13 +1244,34 @@ async function kjørAnalyse() {
     visResultat(data);
     sisteTicker = ticker;
 
-    // Load AI in background after results are shown
+    // Load chart and AI in parallel in background
+    lastChart(ticker, periode);
     lastAI(ticker, periode);
 
   } catch(e) {
     skjulLoader();
     alert("Network error: " + e.message);
   }
+}
+
+async function lastChart(ticker, periode) {
+  const chartImg = document.getElementById("chartImg");
+  const chartLoader = document.getElementById("chartLoader");
+  if (!chartImg) return;
+  if (chartLoader) chartLoader.style.display = "";
+  try {
+    const res = await fetch("/api/chart", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ticker, periode})
+    });
+    const data = await res.json();
+    if (data.graf) {
+      chartImg.src = data.graf;
+      chartImg.style.display = "";
+      if (chartLoader) chartLoader.style.display = "none";
+    }
+  } catch(e) { console.warn("Chart load failed:", e); }
 }
 
 async function lastAI(ticker, periode) {
@@ -1455,15 +1476,17 @@ function visResultat(d) {
       </div>
     </div>`;
 
-  // Technical chart pane (matplotlib from backend)
-  document.getElementById("chartPane-tech").innerHTML = d.graf
-    ? `<div style="padding:10px">
-        <img src="${d.graf}" style="width:100%;border:1px solid var(--border)" alt="Technical chart">
-        <div style="font-size:9px;color:var(--text2);margin-top:6px">
-          MA20/50/200 · Bollinger Bands · MACD · RSI · Volume
-        </div>
-       </div>`
-    : `<div class="alert alert-info" style="margin:10px">Technical chart not available.</div>`;
+  // Technical chart pane — show spinner immediately, chart loads async
+  document.getElementById("chartPane-tech").innerHTML = `
+    <div style="padding:10px">
+      <div id="chartLoader" style="color:var(--text2);font-size:11px;padding:20px;text-align:center">
+        <span class="loader-dots">Loading technical chart</span>
+      </div>
+      <img id="chartImg" src="" style="width:100%;border:1px solid var(--border);display:none" alt="Technical chart">
+      <div style="font-size:9px;color:var(--text2);margin-top:6px">
+        MA20/50/200 · Bollinger Bands · MACD · RSI · Volume
+      </div>
+    </div>`;
 
   // Load TradingView widget
   function lagChart(id, ticker) {
