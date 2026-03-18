@@ -2561,7 +2561,7 @@ function syncAnalysisTickerInputs(ticker) {
 }
 
 function runAnalysis() {
-  return kj?rAnalyse();
+  return kjørAnalyse();
 }
 
 function runMobileAnalysis() {
@@ -2582,7 +2582,7 @@ function quickAnalyse(ticker) {
 }
 
 // ?? Run analysis ??????????????????????????????????????????????????????????????
-async function kj?rAnalyse() {
+async function kjørAnalyse() {
   const ticker = syncAnalysisTickerInputs(
     document.getElementById("tickerInput")?.value
     || document.getElementById("welcomeSearch")?.value
@@ -3631,10 +3631,10 @@ async function loadMarketOverviewBrief(rows, force = false) {
 
 // â”€â”€ Sammenlign â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function runCompare() {
-  return kj?rSammenlign();
+  return kjørSammenlign();
 }
 
-async function kj?rSammenlign() {
+async function kjørSammenlign() {
   const input    = document.getElementById("compareInput").value.trim();
   const periode  = document.getElementById("periodeSelect").value;
   const geminiKey  = "";
