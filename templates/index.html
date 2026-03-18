@@ -326,6 +326,73 @@
   .sig-val   { font-size: 14px; font-weight: 500; }
   .sig-sub   { font-size: 9px; color: var(--text2); margin-top: 2px; }
 
+  /* ── DCF panel ── */
+  .dcf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  @media(max-width:700px) { .dcf-grid { grid-template-columns: 1fr; } }
+  .dcf-scenario {
+    background: var(--bg3); border: 1px solid var(--border);
+    padding: 14px 16px; border-radius: 2px; text-align: center;
+  }
+  .dcf-scenario.bear { border-top: 2px solid var(--red); }
+  .dcf-scenario.base { border-top: 2px solid var(--yellow); }
+  .dcf-scenario.bull { border-top: 2px solid var(--green); }
+  .dcf-scenario-label { font-size: 9px; letter-spacing: 3px; margin-bottom: 8px; }
+  .dcf-scenario.bear .dcf-scenario-label { color: var(--red); }
+  .dcf-scenario.base .dcf-scenario-label { color: var(--yellow); }
+  .dcf-scenario.bull .dcf-scenario-label { color: var(--green); }
+  .dcf-iv { font-size: 28px; font-weight: 500; color: var(--white); letter-spacing: 1px; }
+  .dcf-upside { font-size: 12px; margin-top: 4px; }
+  .dcf-params { font-size: 9px; color: var(--text2); margin-top: 8px; line-height: 1.8; }
+  .dcf-section-title {
+    font-size: 9px; letter-spacing: 2px; color: var(--green2);
+    margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+  }
+  .dcf-wacc-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px;
+  }
+  @media(max-width:600px) { .dcf-wacc-grid { grid-template-columns: repeat(2,1fr); } }
+  .dcf-wacc-cell {
+    background: var(--bg3); border: 1px solid var(--border);
+    padding: 8px 10px; border-radius: 2px;
+  }
+  .dcf-wacc-cell .wk { font-size: 9px; color: var(--text2); margin-bottom: 3px; }
+  .dcf-wacc-cell .wv { font-size: 15px; color: var(--text3); font-weight: 500; }
+  .dcf-sensitivity { overflow-x: auto; margin-bottom: 16px; }
+  .dcf-sens-table { border-collapse: collapse; font-size: 10px; min-width: 500px; width: 100%; }
+  .dcf-sens-table th {
+    background: var(--bg3); color: var(--text2);
+    padding: 5px 8px; text-align: center; border: 1px solid var(--border);
+    font-size: 9px; letter-spacing: 1px;
+  }
+  .dcf-sens-table td {
+    padding: 5px 8px; text-align: center; border: 1px solid var(--border);
+    font-weight: 500; cursor: default;
+  }
+  .dcf-sens-table td.row-label {
+    background: var(--bg3); color: var(--text2); font-size: 9px; white-space: nowrap;
+  }
+  .dcf-current-bar {
+    background: var(--bg3); border: 1px solid var(--border);
+    padding: 12px 16px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .dcf-fcf-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 16px; }
+  .dcf-fcf-table th {
+    background: var(--bg3); color: var(--text2); padding: 5px 10px;
+    text-align: right; border: 1px solid var(--border); font-size: 9px; letter-spacing: 1px;
+  }
+  .dcf-fcf-table th:first-child { text-align: left; }
+  .dcf-fcf-table td {
+    padding: 6px 10px; border: 1px solid var(--border);
+    color: var(--text3); text-align: right;
+  }
+  .dcf-fcf-table td:first-child { color: var(--text2); text-align: left; }
+  .dcf-fcf-table tr:hover td { background: var(--bg3); }
+  .dcf-disclaimer {
+    font-size: 9px; color: var(--text2); line-height: 1.7;
+    border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px;
+  }
+
   /* ── AI panel ── */
   .ai-text {
     font-family: 'IBM Plex Sans', sans-serif;
@@ -809,6 +876,7 @@
             <div class="tab" onclick="byttTab('insider')" id="insiderTab">INSIDER</div>
             <div class="tab" onclick="byttTab('short')" id="shortTab">SHORT</div>
             <div class="tab" onclick="byttTab('options')" id="optionsTab">OPTIONS</div>
+            <div class="tab" onclick="byttTab('dcf')" id="dcfTab">DCF</div>
             <div class="tab" onclick="byttTab('ai')" id="aiTab">AI ANALYSIS</div>
           </div>
           <div class="tab-pane active" id="pane-teknisk"></div>
@@ -837,6 +905,7 @@
           <div class="tab-pane" id="pane-insider"></div>
           <div class="tab-pane" id="pane-short"></div>
           <div class="tab-pane" id="pane-options"></div>
+          <div class="tab-pane" id="pane-dcf"></div>
           <div class="tab-pane" id="pane-ai"></div>
         </div>
 
@@ -1291,6 +1360,228 @@ async function lastChart(ticker, periode) {
   } catch(e) { console.warn("Chart load failed:", e); }
 }
 
+async function lastDCF(ticker) {
+  const pane = document.getElementById("pane-dcf");
+  if (!pane) return;
+  pane.innerHTML = `<div style="padding:14px;color:var(--green2);font-size:11px"><span class="loader-dots">Calculating DCF valuation</span></div>`;
+
+  try {
+    const res  = await fetch("/api/dcf", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ticker})
+    });
+    const d = await res.json();
+    if (d.error) {
+      pane.innerHTML = `<div class="alert alert-error" style="margin:14px">${d.error}</div>`;
+      return;
+    }
+
+    const cur  = d.currentPrice;
+    const w    = d.wacc;
+    const sens = d.sensitivity;
+
+    // ── Sensitivity cell colouring ──────────────────────────────────────
+    // Cells are colour-coded relative to current price
+    function sensCellStyle(iv) {
+      if (!iv || !cur) return "";
+      const up = (iv - cur) / cur * 100;
+      if (up >  30) return "background:rgba(74,158,214,0.30);color:var(--white)";
+      if (up >  10) return "background:rgba(74,158,214,0.15);color:var(--text3)";
+      if (up >   0) return "background:rgba(74,158,214,0.07);color:var(--text3)";
+      if (up > -10) return "background:rgba(224,84,112,0.07);color:var(--text3)";
+      if (up > -30) return "background:rgba(224,84,112,0.15);color:var(--text3)";
+      return "background:rgba(224,84,112,0.30);color:var(--white)";
+    }
+    function upsideClass(up) {
+      if (up === null || up === undefined) return "";
+      return up >= 0 ? "pos" : "neg";
+    }
+    function scenarioUpside(sc) {
+      if (sc.upside === null || sc.upside === undefined) return "";
+      const sign = sc.upside >= 0 ? "+" : "";
+      return `<span class="${upsideClass(sc.upside)}">${sign}${sc.upside}% vs current</span>`;
+    }
+    function fmtIV(v) {
+      return v !== null && v !== undefined ? `${d.currency === 'NOK' ? 'kr' : '$'}${v.toFixed(2)}` : "N/A";
+    }
+
+    // ── WACC breakdown cards ─────────────────────────────────────────────
+    const waccCards = [
+      {k:"WACC",         v: w.total + "%"},
+      {k:"COST OF EQUITY",v:`${w.costEquity}%`},
+      {k:"COST OF DEBT", v:`${w.costDebtPre}% (${w.costDebt}% after-tax)`},
+      {k:"EQUITY WEIGHT",v:`${w.equityWeight}%`},
+      {k:"DEBT WEIGHT",  v:`${w.debtWeight}%`},
+      {k:"BETA (CAPM)",  v: w.beta},
+      {k:"RISK-FREE RATE",v:`${w.rf}%`},
+      {k:"EQ. RISK PREM.",v:`${w.erp}%`},
+    ].map(x => `
+      <div class="dcf-wacc-cell">
+        <div class="wk">${x.k}</div>
+        <div class="wv">${x.v}</div>
+      </div>`).join("");
+
+    // ── Sensitivity matrix ───────────────────────────────────────────────
+    const sensHeaders = sens.wacc_labels.map((l,i) =>
+      `<th style="${i===sens.base_w_idx?'color:var(--yellow);border-bottom:2px solid var(--yellow)':''}">${l}</th>`
+    ).join("");
+    const sensRows = sens.matrix.map((row, ri) => {
+      const isBaseRow = ri === sens.base_g_idx;
+      const cells = row.map((iv, ci) => {
+        const isBase = isBaseRow && ci === sens.base_w_idx;
+        const style  = sensCellStyle(iv);
+        const border = isBase ? "outline:2px solid var(--yellow);outline-offset:-2px;" : "";
+        return `<td style="${style}${border}">${fmtIV(iv)}</td>`;
+      }).join("");
+      return `<tr>
+        <td class="row-label" style="${isBaseRow?'color:var(--yellow);font-weight:600':''}">${sens.g_labels[ri]} growth</td>
+        ${cells}
+      </tr>`;
+    }).join("");
+
+    // ── FCF projection table ─────────────────────────────────────────────
+    const fcfRows = d.fcfTable.map(r => `
+      <tr>
+        <td>Year ${r.year}</td>
+        <td>${d.currency === 'NOK' ? 'kr' : '$'}${r.fcf}B</td>
+        <td>${d.currency === 'NOK' ? 'kr' : '$'}${r.pv}B</td>
+      </tr>`).join("");
+
+    // ── Render ───────────────────────────────────────────────────────────
+    const sc   = d.scenarios;
+    const base = sc.Base;
+    const bear = sc.Bear;
+    const bull = sc.Bull;
+
+    pane.innerHTML = `
+      <div style="padding:14px">
+
+        <!-- Current price bar -->
+        <div class="dcf-current-bar">
+          <div>
+            <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:3px">CURRENT PRICE</div>
+            <div style="font-size:22px;color:var(--white);font-weight:500">${fmtIV(cur)}</div>
+          </div>
+          <div style="width:1px;height:36px;background:var(--border)"></div>
+          <div>
+            <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:3px">BASE INTRINSIC VALUE</div>
+            <div style="font-size:22px;font-weight:500;color:var(--yellow)">${fmtIV(base.intrinsic)}</div>
+          </div>
+          <div style="width:1px;height:36px;background:var(--border)"></div>
+          <div>
+            <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:3px">MARGIN OF SAFETY</div>
+            <div style="font-size:22px;font-weight:500" class="${upsideClass(base.upside)}">
+              ${base.upside !== null ? (base.upside >= 0 ? "+" : "") + base.upside + "%" : "N/A"}
+            </div>
+          </div>
+          <div style="width:1px;height:36px;background:var(--border)"></div>
+          <div>
+            <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:3px">BASE FCF (TTM)</div>
+            <div style="font-size:16px;font-weight:500;color:var(--text3)">${d.currency === 'NOK' ? 'kr' : '$'}${d.fcfBase}B</div>
+          </div>
+          <div style="width:1px;height:36px;background:var(--border)"></div>
+          <div>
+            <div style="font-size:9px;color:var(--text2);letter-spacing:2px;margin-bottom:3px">NET DEBT</div>
+            <div style="font-size:16px;font-weight:500;color:var(--text3)">${d.currency === 'NOK' ? 'kr' : '$'}${d.netDebt}B</div>
+          </div>
+        </div>
+
+        <!-- Scenarios -->
+        <div class="dcf-section-title">▸ BULL / BASE / BEAR SCENARIOS</div>
+        <div class="dcf-grid" style="margin-bottom:20px">
+
+          <div class="dcf-scenario bear">
+            <div class="dcf-scenario-label">● BEAR CASE</div>
+            <div class="dcf-iv">${fmtIV(bear.intrinsic)}</div>
+            <div class="dcf-upside">${scenarioUpside(bear)}</div>
+            <div class="dcf-params">
+              Stage-1 growth: ${bear.g5}% p.a.<br>
+              Terminal growth: ${bear.terminal_g}%<br>
+              WACC: ${bear.wacc}%
+            </div>
+          </div>
+
+          <div class="dcf-scenario base">
+            <div class="dcf-scenario-label">◆ BASE CASE</div>
+            <div class="dcf-iv">${fmtIV(base.intrinsic)}</div>
+            <div class="dcf-upside">${scenarioUpside(base)}</div>
+            <div class="dcf-params">
+              Stage-1 growth: ${base.g5}% p.a.<br>
+              Terminal growth: ${base.terminal_g}%<br>
+              WACC: ${base.wacc}%
+            </div>
+          </div>
+
+          <div class="dcf-scenario bull">
+            <div class="dcf-scenario-label">▲ BULL CASE</div>
+            <div class="dcf-iv">${fmtIV(bull.intrinsic)}</div>
+            <div class="dcf-upside">${scenarioUpside(bull)}</div>
+            <div class="dcf-params">
+              Stage-1 growth: ${bull.g5}% p.a.<br>
+              Terminal growth: ${bull.terminal_g}%<br>
+              WACC: ${bull.wacc}%
+            </div>
+          </div>
+
+        </div>
+
+        <!-- WACC breakdown -->
+        <div class="dcf-section-title">▸ WACC BREAKDOWN</div>
+        <div class="dcf-wacc-grid" style="margin-bottom:20px">
+          ${waccCards}
+        </div>
+
+        <!-- FCF projection table -->
+        <div class="dcf-section-title">▸ 5-YEAR FCF PROJECTION — BASE CASE (${d.baseGrowth}% annual growth)</div>
+        <table class="dcf-fcf-table" style="margin-bottom:20px">
+          <thead>
+            <tr>
+              <th style="text-align:left">YEAR</th>
+              <th>PROJECTED FCF</th>
+              <th>PRESENT VALUE</th>
+            </tr>
+          </thead>
+          <tbody>${fcfRows}</tbody>
+        </table>
+
+        <!-- Sensitivity matrix -->
+        <div class="dcf-section-title">▸ SENSITIVITY MATRIX — INTRINSIC VALUE PER SHARE (Base terminal growth ${base.terminal_g}%)</div>
+        <div style="font-size:9px;color:var(--text2);margin-bottom:8px">
+          Rows = Stage-1 growth rate &nbsp;|&nbsp; Columns = WACC &nbsp;|&nbsp;
+          <span style="background:rgba(74,158,214,0.30);padding:1px 5px;color:var(--white)">Dark blue</span> = >+30% upside &nbsp;
+          <span style="background:rgba(224,84,112,0.30);padding:1px 5px;color:var(--white)">Dark red</span> = >-30% downside &nbsp;
+          <span style="outline:2px solid var(--yellow);padding:1px 5px;color:var(--yellow)">Outlined</span> = Base case
+        </div>
+        <div class="dcf-sensitivity">
+          <table class="dcf-sens-table">
+            <thead>
+              <tr>
+                <th>GROWTH / WACC</th>
+                ${sensHeaders}
+              </tr>
+            </thead>
+            <tbody>${sensRows}</tbody>
+          </table>
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="dcf-disclaimer">
+          ⚠ DCF assumptions: 2-stage model — 5-year explicit FCF projection + Gordon Growth terminal value.
+          WACC uses CAPM (Rf=${w.rf}%, ERP=${w.erp}%) for equity and book cost for debt.
+          FCF is trailing twelve months free cash flow from Yahoo Finance.
+          Sector-adjusted base growth: ${d.sector || "General"} (${d.baseGrowth}% p.a.).
+          This is a mechanical model — actual results depend heavily on growth and discount rate assumptions.
+          Not financial advice. Always perform your own due diligence.
+        </div>
+
+      </div>`;
+
+  } catch(e) {
+    pane.innerHTML = `<div class="alert alert-error" style="margin:14px">DCF calculation failed: ${e.message}</div>`;
+  }
+}
+
 async function lastAI(ticker, periode) {
   const aiPane = document.getElementById("pane-ai");
   if (!aiPane) return;
@@ -1565,6 +1856,11 @@ function visResultat(d) {
   document.getElementById("pane-options").innerHTML =
     `<div style="color:var(--green2);font-size:11px;padding:10px">Fetching options flow...</div>`;
   lastOptions(d.ticker);
+
+  // ── DCF Valuation ──
+  document.getElementById("pane-dcf").innerHTML =
+    `<div style="color:var(--green2);font-size:11px;padding:10px"><span class="loader-dots">Calculating DCF valuation</span></div>`;
+  lastDCF(d.ticker);
 
   // ── AI — loaded async by lastAI(), just set placeholder ──
   document.getElementById("pane-ai").innerHTML = `
