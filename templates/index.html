@@ -1888,7 +1888,7 @@
           <span class="panel-title">POSITIONS</span>
           <div style="display:flex; gap:8px">
             <button class="btn" onclick="oppdaterPortefolje()" style="width:auto;padding:4px 12px;font-size:10px">â†» REFRESH PRICES</button>
-            <button class="btn" onclick="tÃ¸mPortefolje()" style="width:auto;padding:4px 12px;font-size:10px;border-color:var(--red);color:var(--red)">âœ• CLEAR</button>
+            <button class="btn" onclick="tømPortefolje()" style="width:auto;padding:4px 12px;font-size:10px;border-color:var(--red);color:var(--red)">âœ• CLEAR</button>
           </div>
         </div>
         <div id="pfTabell">
@@ -2978,9 +2978,9 @@ function beregnMoS(f, dcfUpside = null) {
   const pe      = parseFloat(f._pe_raw);
   const eps     = parseFloat(f._eps_raw);
   const pb      = parseFloat(f._pb_raw);
-  const hi52    = parseFloat(f._52u_hÃ¸y_raw);
+  const hi52    = parseFloat(f._52u_høy_raw);
   const lo52    = parseFloat(f._52u_lav_raw);
-  const target  = parseFloat(f._mÃ¥l_raw);
+  const target  = parseFloat(f._mål_raw);
   const peg     = parseFloat(f._peg_raw);
   const evEb    = parseFloat(f._evEbitda_raw);
   const egrw    = parseFloat(f._earnings_growth); // e.g. 0.12 = 12%
@@ -3089,7 +3089,7 @@ function beregnMoS(f, dcfUpside = null) {
     </div>`).join("");
 
   const dcfPending = dcfUpside === null
-    ? `<span class="mos-dcf-pending">DCF loadingâ€¦</span>` : "";
+    ? `<span class="mos-dcf-pending">DCF loading…</span>` : "";
 
   el.innerHTML = `
     <div class="mos-widget">
@@ -3142,8 +3142,8 @@ function visResultat(d) {
 
   // â”€â”€ Header â”€â”€
   const prisen = parseFloat(f.pris);
-  const mÃ¥l    = parseFloat(f.mÃ¥l);
-  const upside = (!isNaN(prisen) && !isNaN(mÃ¥l)) ? ((mÃ¥l-prisen)/prisen*100).toFixed(1) : null;
+  const mål    = parseFloat(f.mål);
+  const upside = (!isNaN(prisen) && !isNaN(mål)) ? ((mål-prisen)/prisen*100).toFixed(1) : null;
 
   document.getElementById("stockHeader").innerHTML = `
     <div class="panel-header">
@@ -3157,13 +3157,13 @@ function visResultat(d) {
       <div class="stock-header">
         <div>
           <div class="stock-name">${f.navn}</div>
-          <div class="stock-sub">${f.sektor} Â· ${f.bransje} Â· ${f.bÃ¸rs} Â· ${f.valuta}</div>
+          <div class="stock-sub">${f.sektor} Â· ${f.bransje} Â· ${f.børs} Â· ${f.valuta}</div>
           ${upside !== null ? `<div style="margin-top:8px; font-size:11px">
-            Analyst Target: <span style="color:var(--yellow)">${f.mÃ¥l}</span>
+            Analyst Target: <span style="color:var(--yellow)">${f.mål}</span>
             <span class="${parseFloat(upside)>=0?'pos':'neg'}">(${parseFloat(upside)>=0?'+':''}${upside}% upside)</span>
           </div>` : ''}
-          ${(f["mÃ¥l_lav"] && f["mÃ¥l_lav"] !== "N/A") || (f["mÃ¥l_hÃ¸y"] && f["mÃ¥l_hÃ¸y"] !== "N/A") ? `<div style="margin-top:6px; font-size:10px; color:var(--text2)">
-            Target Range: <span style="color:var(--text3)">${f["mÃ¥l_lav"]}</span> to <span style="color:var(--text3)">${f["mÃ¥l_hÃ¸y"]}</span>
+          ${(f["mål_lav"] && f["mål_lav"] !== "N/A") || (f["mål_høy"] && f["mål_høy"] !== "N/A") ? `<div style="margin-top:6px; font-size:10px; color:var(--text2)">
+            Target Range: <span style="color:var(--text3)">${f["mål_lav"]}</span> to <span style="color:var(--text3)">${f["mål_høy"]}</span>
           </div>` : ''}
         </div>
         <div class="stock-price-block">
@@ -3171,7 +3171,7 @@ function visResultat(d) {
           <div class="stock-change">
             <span style="font-size:10px; color:var(--text2)">52w: </span>
             <span class="neg">${f['52u_lav']}</span> â€”
-            <span class="pos">${f['52u_hÃ¸y']}</span>
+            <span class="pos">${f['52u_høy']}</span>
           </div>
         </div>
       </div>
@@ -3246,9 +3246,9 @@ function visResultat(d) {
     ["ROA", f.roa], ["Gross Margin", f.bruttomargin],
     ["Operating Margin", f.driftsmargin], ["Net Margin", f.nettmargin],
     ["Revenue Growth", f.revenue_growth], ["Earnings Growth", f.earnings_growth],
-    ["52W High", f["52u_hÃ¸y"]], ["52W Low", f["52u_lav"]],
-    ["Target Mean", f.mÃ¥l], ["Target High", f["mÃ¥l_hÃ¸y"]],
-    ["Target Low", f["mÃ¥l_lav"]],
+    ["52W High", f["52u_høy"]], ["52W Low", f["52u_lav"]],
+    ["Target Mean", f.mål], ["Target High", f["mål_høy"]],
+    ["Target Low", f["mål_lav"]],
   ];
   document.getElementById("pane-fundamental").innerHTML = `
     <div class="data-grid">
@@ -3427,16 +3427,16 @@ async function lastMakro() {
     /*
 
     // Market status
-    const nÃ¥ = new Date();
-    const utc = nÃ¥.getUTCHours() * 60 + nÃ¥.getUTCMinutes();
-    const dag = nÃ¥.getUTCDay();
-    const erÃ…pen = dag >= 1 && dag <= 5 && utc >= 870 && utc < 1260;
+    const nå = new Date();
+    const utc = nå.getUTCHours() * 60 + nå.getUTCMinutes();
+    const dag = nå.getUTCDay();
+    const erÅpen = dag >= 1 && dag <= 5 && utc >= 870 && utc < 1260;
     // Legacy block kept below for reference, but disabled by the early return above.
     updateTickerBar(data);
     return;
     const statusEl = document.getElementById("markedStatus");
     if (statusEl) {
-      statusEl.innerHTML = erÃ…pen
+      statusEl.innerHTML = erÅpen
         ? `<span class="market-open">â— US OPEN</span>`
         : `<span class="market-closed">â— US CLOSED</span>`;
     }
@@ -3669,7 +3669,7 @@ async function kjørSammenlign() {
     const worstSharp = Math.min(...aksjer.map(d => d.sharpe));
     const bestAvk    = Math.max(...aksjer.map(d => d.avk));
 
-    // Avkastning pÃ¥ perioder
+    // Avkastning på perioder
     const periodeTabell = aksjer.map(r => `
       <tr>
         <td style="color:var(--green);font-weight:500">${r.ticker}</td>
@@ -3696,7 +3696,7 @@ async function kjørSammenlign() {
         <td>${r.bruttomargin}</td>
         <td>${r.driftsmargin}</td>
         <td>${r.utbytte}</td>
-        <td>${r.mÃ¥l}</td>
+        <td>${r.mål}</td>
         <td>${konsensusHtml(r.konsensus)}</td>
       </tr>`).join("");
 
@@ -3753,7 +3753,7 @@ async function kjørSammenlign() {
   }
 }
 
-// â”€â”€ PortefÃ¸lje â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Portefølje â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function leggTilPosisjon() {
   const ticker = document.getElementById("pfTicker").value.trim().toUpperCase();
   const antall = parseFloat(document.getElementById("pfAntall").value);
@@ -3783,7 +3783,7 @@ function fjernPosisjon(ticker) {
   visPortefolje();
 }
 
-function tÃ¸mPortefolje() {
+function tømPortefolje() {
   if (!confirm("Clear entire portfolio??")) return;
   portefolje = [];
   localStorage.removeItem("portefolje");
@@ -3856,7 +3856,7 @@ async function analyserPortefoljeData(medAI) {
             <span style="font-size:9px;color:var(--text2)">${(p.navn||'').substring(0,16)}</span></td>
           <td>${p.antall}</td>
           <td>${p.snittpris.toFixed(2)}</td>
-          <td style="color:var(--text3)">${p.nÃ¥pris}</td>
+          <td style="color:var(--text3)">${p.nåpris}</td>
           <td class="${gcls}">${p.gevinst>=0?'+':''}${p.gevinst.toFixed(2)}</td>
           <td class="${gcls}">${p.pst>=0?'+':''}${p.pst.toFixed(2)}%</td>
           <td>
@@ -4355,7 +4355,7 @@ function tegnWatchlist() {
   const rows = watchlist.map(t => {
     const d = wlPriser[t];
     const removeBtn = `<button onclick="event.stopPropagation();fjernFraWatchlist('${t}')" style="background:none;border:1px solid var(--border);color:var(--text2);font-size:9px;padding:2px 6px;cursor:pointer;font-family:inherit">âœ•</button>`;
-    if (!d) return `<div class="wl-row" onclick="analyserFraWatchlist('${t}')"><span style="color:var(--green);font-weight:500">${t}</span><span style="color:var(--text2);font-size:10px">loadingâ€¦</span><span>â€”</span><span>â€”</span><span>â€”</span><span></span><span>â€”</span>${removeBtn}</div>`;
+    if (!d) return `<div class="wl-row" onclick="analyserFraWatchlist('${t}')"><span style="color:var(--green);font-weight:500">${t}</span><span style="color:var(--text2);font-size:10px">loading…</span><span>â€”</span><span>â€”</span><span>â€”</span><span></span><span>â€”</span>${removeBtn}</div>`;
     if (d.feil) return `<div class="wl-row" style="cursor:default"><span style="color:var(--red)">${t}</span><span style="color:var(--red);font-size:10px">${d.feil}</span><span></span><span></span><span></span><span></span><span></span>${removeBtn}</div>`;
     const cls = d.endring >= 0 ? "pos" : "neg";
     const pil = d.endring >= 0 ? "â–²" : "â–¼";
