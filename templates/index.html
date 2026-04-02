@@ -2083,7 +2083,7 @@ function showAnalysisFeedback(message = "", type = "error") {
     : "";
 }
 
-function scheduleSplashFallback(ms = 3200) {
+function scheduleSplashFallback(ms = 5000) {
   clearTimeout(splashFallbackTimer);
   splashFallbackTimer = setTimeout(() => dismissSplash(true), ms);
 }
@@ -2139,7 +2139,7 @@ async function initApp() {
 
   await Promise.race([
     Promise.all([fontsReady, macroBootstrap]),
-    new Promise(resolve => setTimeout(resolve, 1800)),
+    new Promise(resolve => setTimeout(resolve, 3500)),
   ]);
   dismissSplash();
 }
