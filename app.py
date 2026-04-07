@@ -1302,7 +1302,9 @@ def api_ai_analyse():
         if price_now is not None and year_high is not None and year_low is not None and year_high > year_low:
             range_position = round((price_now - year_low) / (year_high - year_low) * 100, 1)
 
+        # ── Analyst consensus + upgrades/downgrades ───────────────────────────
         analyst_ctx = ""
+        upgrades_ctx = ""
         try:
             target_mean = first_valid_number(info.get("targetMeanPrice"), fundamental.get("_target_mean_raw"))
             target_mean = first_valid_number(target_mean, snapshot.get("target_mean"))
@@ -1316,12 +1318,53 @@ def api_ai_analyse():
             sell        = info.get("numberOfSellOpinions", 0) or info.get("sell", 0)
             strong_sell = info.get("numberOfStrongSellOpinions", 0) or info.get("strongSell", 0)
             analyst_ctx = (
-                f"Analyst consensus: {n_analysts} analysts. Distribution: Strong Buy={strong_buy}, Buy={buy}, Hold={hold}, Sell={sell}, Strong Sell={strong_sell}. "
-                f"Targets: low={target_low}, mean={target_mean}, high={target_high}. Mean-target upside={upside}%."
+                f"Analyst consensus: {n_analysts} analysts. Distribution: Strong Buy={strong_buy}, Buy={buy}, "
+                f"Hold={hold}, Sell={sell}, Strong Sell={strong_sell}. "
+                f"Targets: low={safe(target_low)}, mean={safe(target_mean)}, high={safe(target_high)}. "
+                f"Mean-target upside={upside}%."
             )
+            # Upgrades/downgrades
+            ACTION_MAP_AI = {
+                "main": "MAINTAIN", "reit": "REITERATE", "init": "INITIATED",
+                "up": "UPGRADE", "down": "DOWNGRADE", "upgrade": "UPGRADE",
+                "downgrade": "DOWNGRADE", "resume": "RESUMED", "suspend": "SUSPENDED",
+                "coverage": "INITIATED", "new": "INITIATED",
+            }
+            GRADE_RANK = {
+                "strong buy": 5, "outperform": 4, "overweight": 4, "buy": 4,
+                "market perform": 3, "neutral": 3, "equal-weight": 3, "hold": 3, "sector perform": 3,
+                "underperform": 2, "underweight": 2, "sell": 1, "strong sell": 1,
+            }
+            ug = aksje.upgrades_downgrades
+            if ug is not None and not ug.empty:
+                ug = ug.sort_index(ascending=False).head(100)
+                recent_actions = []
+                for idx, row in ug.iterrows():
+                    raw_action = str(row.get("Action", "")).lower().strip()
+                    from_grade = str(row.get("From Grade", "")).strip()
+                    to_grade   = str(row.get("To Grade", "")).strip()
+                    if from_grade.lower() in ("nan", "none", ""): from_grade = ""
+                    if to_grade.lower()   in ("nan", "none", ""): to_grade   = ""
+                    if raw_action in ("main", "reit") and from_grade and to_grade and from_grade.lower() != to_grade.lower():
+                        f = GRADE_RANK.get(from_grade.lower(), 3)
+                        t = GRADE_RANK.get(to_grade.lower(), 3)
+                        if t > f:   raw_action = "upgrade"
+                        elif t < f: raw_action = "downgrade"
+                    label = ACTION_MAP_AI.get(raw_action, raw_action.upper())
+                    if label in ("MAINTAIN", "REITERATE") and not (from_grade or to_grade):
+                        continue
+                    rating_str = f"{from_grade} → {to_grade}" if (from_grade and to_grade and from_grade.lower() != to_grade.lower()) else (to_grade or from_grade)
+                    firm = str(row.get("Firm", ""))[:25]
+                    date_str = str(idx)[:10]
+                    recent_actions.append(f"{date_str} {firm}: {label}" + (f" ({rating_str})" if rating_str else ""))
+                    if len(recent_actions) >= 8:
+                        break
+                if recent_actions:
+                    upgrades_ctx = "Recent analyst actions: " + "; ".join(recent_actions) + "."
         except Exception as e:
             logger.warning(f"[ai_analyse] analyst context: {e}")
 
+        # ── Insider activity ──────────────────────────────────────────────────
         insider_ctx = ""
         try:
             ins = aksje.insider_transactions
@@ -1329,34 +1372,54 @@ def api_ai_analyse():
                 ins = ins.head(10)
                 buys = sum(
                     1 for _, r in ins.iterrows()
-                    if "buy" in str(r.get("Transaction","")).lower() or "purchase" in str(r.get("Transaction","")).lower()
+                    if "buy" in str(r.get("Transaction", "")).lower() or "purchase" in str(r.get("Transaction", "")).lower()
                 )
                 sells = len(ins) - buys
                 recent = [
                     f"{str(r.get('Insider',''))[:20]} ({str(r.get('Position',''))[:15]}): {str(r.get('Transaction',''))}"
                     for _, r in ins.head(5).iterrows()
                 ]
-                insider_ctx = f"Insider activity: {buys} buys and {sells} sells across the latest 10 records. Recent examples: {'; '.join(recent)}."
+                insider_ctx = f"Insider activity: {buys} buys and {sells} sells across the latest 10 records. Recent: {'; '.join(recent)}."
         except Exception as e:
             logger.warning(f"[ai_analyse] insider context: {e}")
 
+        # ── Earnings: next date + full EPS history ────────────────────────────
         earnings_ctx = ""
+        next_earnings_ctx = ""
+        try:
+            cal = aksje.calendar
+            if cal is not None:
+                if isinstance(cal, dict):
+                    ed = cal.get("Earnings Date")
+                    if ed:
+                        next_date_val = str(ed[0])[:10] if hasattr(ed, "__len__") else str(ed)[:10]
+                        next_earnings_ctx = f"Next earnings date: {next_date_val}."
+                elif hasattr(cal, "columns") and "Earnings Date" in cal.columns:
+                    next_earnings_ctx = f"Next earnings date: {str(cal['Earnings Date'].iloc[0])[:10]}."
+        except Exception as e:
+            logger.warning(f"[ai_analyse] next earnings date: {e}")
         try:
             ei = aksje.earnings_history
             if ei is not None and not ei.empty:
                 beats = misses = 0
-                for _, r in ei.head(4).iterrows():
-                    actual = r.get("epsActual") or r.get("Reported EPS")
-                    est    = r.get("epsEstimate") or r.get("EPS Estimate")
+                eps_rows = []
+                for idx, row in ei.head(8).iterrows():
+                    actual = row.get("epsActual") or row.get("Reported EPS")
+                    est    = row.get("epsEstimate") or row.get("EPS Estimate")
                     if actual is not None and est is not None and actual == actual and est == est:
-                        if float(actual) >= float(est):
-                            beats += 1
-                        else:
-                            misses += 1
-                earnings_ctx = f"Recent earnings track record: {beats} beats and {misses} misses over the latest 4 reported quarters."
+                        a, e_ = float(actual), float(est)
+                        beat = a >= e_
+                        beats += int(beat)
+                        misses += int(not beat)
+                        eps_rows.append(f"{str(idx)[:10]}: actual={round(a,2)}, est={round(e_,2)}, {'BEAT' if beat else 'MISS'}")
+                summary = f"{beats} beats and {misses} misses over latest {len(eps_rows)} quarters."
+                if eps_rows:
+                    summary += " Detail: " + "; ".join(eps_rows[:6]) + "."
+                earnings_ctx = summary
         except Exception as e:
             logger.warning(f"[ai_analyse] earnings context: {e}")
 
+        # ── Short interest ────────────────────────────────────────────────────
         short_ctx = ""
         try:
             short_pct = info.get("shortPercentOfFloat")
@@ -1373,6 +1436,7 @@ def api_ai_analyse():
         except Exception as e:
             logger.warning(f"[ai_analyse] short context: {e}")
 
+        # ── Options flow: enriched with sentiment label + top strikes ─────────
         options_ctx = ""
         try:
             exps = aksje.options
@@ -1389,44 +1453,114 @@ def api_ai_analyse():
                         logger.warning(f"[ai_analyse] options chain {exp}: {e}")
                 pc_vol = round(all_put_vol / max(all_call_vol, 1), 2)
                 pc_oi  = round(all_put_oi  / max(all_call_oi, 1), 2)
+                if pc_vol > 1.5:   flow_sentiment = "VERY BEARISH"
+                elif pc_vol > 1.1: flow_sentiment = "BEARISH"
+                elif pc_vol < 0.5: flow_sentiment = "VERY BULLISH"
+                elif pc_vol < 0.8: flow_sentiment = "BULLISH"
+                else:              flow_sentiment = "NEUTRAL"
                 atm_iv_str = ""
+                top_calls_str = ""
+                top_puts_str = ""
                 try:
                     chain0 = aksje.option_chain(exps[0])
                     calls = chain0.calls.dropna(subset=["impliedVolatility"])
                     if price_now and not calls.empty:
                         atm = calls.iloc[(calls["strike"] - price_now).abs().argsort()[:1]]
                         atm_iv = round(float(atm["impliedVolatility"].values[0]) * 100, 1)
-                        atm_iv_str = f", ATM implied volatility={atm_iv}%"
+                        atm_iv_str = f", ATM IV={atm_iv}%"
+                    top_c = chain0.calls.dropna(subset=["openInterest"]).sort_values("openInterest", ascending=False).head(3)
+                    top_p = chain0.puts.dropna(subset=["openInterest"]).sort_values("openInterest", ascending=False).head(3)
+                    top_calls_str = ", ".join([f"${r['strike']:.0f}(OI={int(r['openInterest'])})" for _, r in top_c.iterrows()])
+                    top_puts_str  = ", ".join([f"${r['strike']:.0f}(OI={int(r['openInterest'])})" for _, r in top_p.iterrows()])
                 except Exception as e:
-                    logger.warning(f"[ai_analyse] ATM IV: {e}")
-                sentiment = "bearish" if pc_vol > 1.2 else "bullish" if pc_vol < 0.7 else "neutral"
-                options_ctx = f"Options flow across the next 4 expirations: put/call volume={pc_vol} ({sentiment}), put/call open interest={pc_oi}{atm_iv_str}."
+                    logger.warning(f"[ai_analyse] options detail: {e}")
+                options_ctx = (
+                    f"Options: sentiment={flow_sentiment}, put/call volume={pc_vol}, put/call OI={pc_oi}{atm_iv_str}."
+                )
+                if top_calls_str: options_ctx += f" Top call strikes (by OI): {top_calls_str}."
+                if top_puts_str:  options_ctx += f" Top put strikes (by OI): {top_puts_str}."
         except Exception as e:
             logger.warning(f"[ai_analyse] options context: {e}")
 
+        # ── DCF: use cache or compute base scenario inline ────────────────────
         dcf_ctx = ""
         cached_dcf = cache_get(f"dcf:{ticker}")
-        if cached_dcf:
+        if not cached_dcf:
             try:
-                base_case = cached_dcf.get("scenarios", {}).get("Base", {})
+                _dcf_snap = build_company_snapshot(aksje, info, None)
+                _fcf = _dcf_snap["free_cashflow"]
+                _shares = _dcf_snap["shares_out"]
+                _price  = _dcf_snap["current_price"]
+                if _fcf and _fcf > 0 and _shares and _price:
+                    _wacc = 0.09
+                    _g5   = 0.07
+                    _tg   = 0.025
+                    _pv = sum(_fcf * (1 + _g5) ** i / (1 + _wacc) ** i for i in range(1, 6))
+                    _tv = (_fcf * (1 + _g5) ** 5 * (1 + _tg)) / (_wacc - _tg) / (1 + _wacc) ** 5
+                    _iv = round((_pv + _tv - (_dcf_snap["total_debt"] - _dcf_snap["cash"])) / _shares, 2)
+                    _upside = round((_iv - _price) / _price * 100, 1) if _price else None
+                    dcf_ctx = f"DCF quick estimate (base, default WACC={round(_wacc*100,1)}%, growth={round(_g5*100,1)}%): intrinsic value≈{_iv}, upside≈{_upside}%. Note: run full DCF tab for bear/bull scenarios and sensitivity."
+            except Exception as e:
+                logger.warning(f"[ai_analyse] inline DCF: {e}")
+        else:
+            try:
+                scenarios  = cached_dcf.get("scenarios", {})
+                base_case  = scenarios.get("Base", {})
+                bear_case  = scenarios.get("Bear", {})
+                bull_case  = scenarios.get("Bull", {})
+                mos_overall = cached_dcf.get("mosOverall", {})
                 dcf_ctx = (
-                    f"DCF base case: intrinsic value={base_case.get('intrinsic')}, upside={base_case.get('upside')}%, "
-                    f"WACC={base_case.get('wacc')}%, 5-year growth={base_case.get('g5')}%, terminal growth={base_case.get('terminal_g')}%."
+                    f"DCF scenarios — Bear: intrinsic={bear_case.get('intrinsic')}, upside={bear_case.get('upside')}%; "
+                    f"Base: intrinsic={base_case.get('intrinsic')}, upside={base_case.get('upside')}%; "
+                    f"Bull: intrinsic={bull_case.get('intrinsic')}, upside={bull_case.get('upside')}%. "
+                    f"WACC={base_case.get('wacc')}%, 5yr growth={base_case.get('g5')}%, terminal={base_case.get('terminal_g')}%. "
+                    f"Margin of safety verdict: {mos_overall.get('verdict','N/A')} — {mos_overall.get('desc','')}"
                 )
             except Exception:
                 dcf_ctx = ""
 
+        # ── News headlines ────────────────────────────────────────────────────
+        news_ctx = ""
+        try:
+            nyheter = aksje.news or []
+            titles = []
+            for n in nyheter[:8]:
+                content = n.get("content", {})
+                title = content.get("title") or n.get("title", "")
+                if title:
+                    titles.append(title)
+            if titles:
+                news_ctx = "Recent headlines: " + " | ".join(titles[:6]) + "."
+        except Exception as e:
+            logger.warning(f"[ai_analyse] news context: {e}")
+
+        # ── Macro backdrop (from shared cache) ────────────────────────────────
+        macro_ctx = ""
+        try:
+            macro_data = cache_get("makro")
+            if macro_data:
+                MACRO_SHOW = {"S&P 500", "Nasdaq", "VIX", "US 10y Yield", "Oil (Brent)", "USD/NOK"}
+                items = []
+                for item in macro_data:
+                    name = item.get("navn", "")
+                    if name in MACRO_SHOW:
+                        val = item.get("verdi", "N/A")
+                        chg = item.get("endring", 0) or 0
+                        items.append(f"{name}={val} ({chg:+.2f}%)")
+                if items:
+                    macro_ctx = "Macro backdrop: " + ", ".join(items) + "."
+        except Exception as e:
+            logger.warning(f"[ai_analyse] macro context: {e}")
+
+        # ── Build context strings ─────────────────────────────────────────────
         valuation_ctx = (
             f"Price={safe(price_now)}, P/E={fundamental.get('pe','N/A')}, Forward P/E={fundamental.get('forward_pe','N/A')}, "
+            f"P/B={safe(info.get('priceToBook'))}, P/S={safe(info.get('priceToSalesTrailing12Months'))}, "
+            f"PEG={safe(info.get('pegRatio'))}, EV/EBITDA={safe(info.get('enterpriseToEbitda'))}, "
+            f"Dividend Yield={safe(info.get('dividendYield'), pst=True)}, "
             f"Market Cap={fundamental.get('mktcap','N/A')}, FCF={fundamental.get('frikontant','N/A')}, "
-            f"FCF Yield={fundamental.get('fcf_yield','N/A')}, Target Mean={fundamental.get('mål','N/A')}, "
-            f"Target Range={fundamental.get('mål_lav','N/A')} to {fundamental.get('mål_høy','N/A')}."
-        )
-        quality_ctx = (
-            f"ROE={fundamental.get('roe','N/A')}, Gross Margin={fundamental.get('bruttomargin','N/A')}, "
-            f"Operating Margin={fundamental.get('driftsmargin','N/A')}, Net Margin={fundamental.get('nettmargin','N/A')}, "
-            f"Revenue Growth={fundamental.get('revenue_growth','N/A')}, Earnings Growth={fundamental.get('earnings_growth','N/A')}, "
-            f"Debt/Equity={safe(info.get('debtToEquity'))}."
+            f"FCF Yield={fundamental.get('fcf_yield','N/A')}, FCF Source={fundamental.get('_fcf_source', snapshot.get('fcf_source','N/A'))}, "
+            f"Target Mean={safe(target_mean)}, Target Range={safe(target_low)} to {safe(target_high)}."
         )
         quality_ctx = (
             f"ROE={fundamental.get('roe','N/A')}, Gross Margin={fundamental.get('bruttomargin','N/A')}, "
@@ -1434,29 +1568,30 @@ def api_ai_analyse():
             f"Revenue Growth={fundamental.get('revenue_growth','N/A')}, Earnings Growth={fundamental.get('earnings_growth','N/A')}, "
             f"Debt/Equity={safe(fundamental.get('_debt_to_equity_raw', snapshot.get('debt_to_equity')))}."
         )
-        valuation_ctx = (
-            f"Price={safe(price_now)}, P/E={fundamental.get('pe','N/A')}, Forward P/E={fundamental.get('forward_pe','N/A')}, "
-            f"Market Cap={fundamental.get('mktcap','N/A')}, FCF={fundamental.get('frikontant','N/A')}, "
-            f"FCF Yield={fundamental.get('fcf_yield','N/A')}, Target Mean={safe(target_mean)}, "
-            f"Target Range={safe(target_low)} to {safe(target_high)}."
-        )
-        valuation_ctx += f" FCF Source={fundamental.get('_fcf_source', snapshot.get('fcf_source', 'N/A'))}."
+        bb_pct_display = round(float(sig.get("bb_pct", 0.5)) * 100, 1) if sig.get("bb_pct") is not None else "N/A"
         technical_ctx = (
-            f"RSI={sig.get('rsi','N/A')}, MACD={'Bullish crossover' if sig.get('macd_bull') else 'Bearish crossover'}, "
-            f"Price vs SMA50={'Above' if sig.get('over_sma50') else 'Below'}, Price vs SMA200={'Above' if sig.get('over_sma200') else 'Below'}, "
+            f"RSI={sig.get('rsi','N/A')}, MACD={'Bullish' if sig.get('macd_bull') else 'Bearish'}, "
+            f"Price vs SMA20={'Above' if sig.get('over_sma20') else 'Below'}, "
+            f"Price vs SMA50={'Above' if sig.get('over_sma50') else 'Below'}, "
+            f"Price vs SMA200={'Above' if sig.get('over_sma200') else 'Below'}, "
+            f"Bollinger Band position={bb_pct_display}% (0%=lower band, 100%=upper band), "
+            f"ATR={sig.get('atr','N/A')}, "
             f"52-week range position={range_position if range_position is not None else 'N/A'}%."
         )
         risk_ctx = (
             f"Sharpe={ri.get('sharpe','N/A')}, Sortino={ri.get('sortino','N/A')}, Calmar={ri.get('calmar','N/A')}, "
-            f"Max Drawdown={ri.get('max_dd','N/A')}%, Beta={ri.get('beta','N/A')}, Alpha={ri.get('alpha','N/A')}%."
+            f"CAGR={ri.get('cagr','N/A')}%, Annualised Vol={ri.get('vol','N/A')}%, "
+            f"Max Drawdown={ri.get('max_dd','N/A')}%, VaR 95%={ri.get('var95','N/A')}%, VaR 99%={ri.get('var99','N/A')}%, "
+            f"Beta={ri.get('beta','N/A')}, Alpha={ri.get('alpha','N/A')}%, Risk-free rate={ri.get('risk_free','N/A')}%."
         )
-        risk_ctx += f" Risk-free rate={ri.get('risk_free','N/A')}%."
 
         prompt = f"""
 You are a senior equity analyst writing a disciplined, evidence-first stock note for {fundamental.get('navn', ticker)} ({ticker}).
 
 GROUND RULES:
 {AI_GUARDRAILS}
+
+{f"MACRO BACKDROP: {macro_ctx}" if macro_ctx else ""}
 
 VALUATION SNAPSHOT:
 {valuation_ctx}
@@ -1470,20 +1605,23 @@ TECHNICAL SNAPSHOT:
 RISK SNAPSHOT:
 {risk_ctx}
 
-{f"DCF SNAPSHOT: {dcf_ctx}" if dcf_ctx else ""}
-{f"ANALYST POSITIONING: {analyst_ctx}" if analyst_ctx else ""}
-{f"INSIDER POSITIONING: {insider_ctx}" if insider_ctx else ""}
-{f"EARNINGS QUALITY: {earnings_ctx}" if earnings_ctx else ""}
+{f"DCF VALUATION: {dcf_ctx}" if dcf_ctx else ""}
+{f"ANALYST CONSENSUS: {analyst_ctx}" if analyst_ctx else ""}
+{f"RECENT ANALYST ACTIONS: {upgrades_ctx}" if upgrades_ctx else ""}
+{f"INSIDER ACTIVITY: {insider_ctx}" if insider_ctx else ""}
+{f"UPCOMING CATALYST: {next_earnings_ctx}" if next_earnings_ctx else ""}
+{f"EARNINGS TRACK RECORD: {earnings_ctx}" if earnings_ctx else ""}
 {f"SHORT INTEREST: {short_ctx}" if short_ctx else ""}
 {f"OPTIONS POSITIONING: {options_ctx}" if options_ctx else ""}
+{f"RECENT NEWS: {news_ctx}" if news_ctx else ""}
 
 Write the response in this exact structure:
-1. **Investment Setup** - 2-3 sentences summarizing valuation, quality, trend, and whether the evidence is aligned or mixed
-2. **Bull Case** - 3 bullet points, each tied to a specific metric or context item above
-3. **Bear Case** - 3 bullet points, each tied to a specific metric, risk measure, or data gap above
-4. **Positioning Check** - 1-2 sentences on analysts, insiders, short interest, and options activity; if sparse, say the positioning evidence is limited
-5. **What Would Change The View** - 1-2 sentences on the next metric, trend, or condition that would materially improve or weaken the thesis
-6. **Stance** - one line with BUY, HOLD, or SELL plus a confidence label of Low, Medium, or High
+1. **Investment Setup** — 2-3 sentences summarizing valuation, quality, trend, and whether the evidence is aligned or mixed
+2. **Bull Case** — 3 bullet points, each tied to a specific metric or data point above
+3. **Bear Case** — 3 bullet points, each tied to a specific metric, risk measure, or data gap above
+4. **Positioning Check** — 1-2 sentences on analysts, recent upgrades/downgrades, insiders, short interest, and options; if sparse, say the positioning evidence is limited
+5. **What Would Change The View** — 1-2 sentences on the next metric, trend, or upcoming event that would materially improve or weaken the thesis
+6. **Stance** — one line: BUY / HOLD / SELL plus confidence: Low, Medium, or High
 
 Confidence rules:
 - High only if valuation, quality, trend, and positioning are mostly aligned with limited missing data.
@@ -1497,7 +1635,7 @@ Additional rules:
 - Do not mention catalysts, schedules, or price levels unless they are explicitly present in the supplied context.
 - Mixed signals are normal in markets — identify the dominant signal and commit to a directional call. Avoid HOLD unless the evidence is genuinely deadlocked.
 - BUY when the weight of technicals, valuation, and quality metrics favor upside. SELL when multiple risk factors and valuation signals are negative. HOLD only as a last resort when evidence is truly 50/50.
-- Keep the tone sharp, direct, and professional. Max 340 words.
+- Keep the tone sharp, direct, and professional. Max 380 words.
 """
         ai_tekst = spør_ai(prompt, gemini_key, 1500)
         cache_set(cache_key_ai, ai_tekst)
