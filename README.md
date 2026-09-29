@@ -43,7 +43,7 @@ Professional stock analysis platform built with Flask, deployed on Render.
 |---|---|
 | Backend | Python 3.11, Flask, Gunicorn (3 workers) |
 | Data | yfinance (Yahoo Finance) |
-| AI | Groq API — LLaMA 3.3 70B Versatile |
+| AI | Gemini/GROQ API — LLaMA 3.3 70B Versatile |
 | Charts | TradingView Widget, Matplotlib, Seaborn |
 | Frontend | Vanilla JS, IBM Plex Mono, CSS Grid |
 | Hosting | Render Starter |
